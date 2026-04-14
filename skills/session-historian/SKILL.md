@@ -7,49 +7,57 @@ description: Read and analyze Codex and Claude session history. Use when asking 
 
 Inspect both Codex and Claude session logs through one interface.
 
-## Script locations
+## Script root
 
-- Codex install path: `~/.agents/skills/session-historian/scripts/...`
-- Claude Code install path: `~/.claude/skills/session-historian/scripts/...`
+Detect the install root before running commands:
 
-Use the path that matches the current tool installation.
+```bash
+if [ -d "$HOME/.agents/skills/session-historian/scripts" ]; then
+  SESSION_HISTORIAN_ROOT="$HOME/.agents/skills/session-historian"
+elif [ -d "$HOME/.claude/skills/session-historian/scripts" ]; then
+  SESSION_HISTORIAN_ROOT="$HOME/.claude/skills/session-historian"
+else
+  echo "session-historian is not installed" >&2
+  exit 1
+fi
+```
 
 ## Commands
 
 List recent sessions:
 
 ```bash
-python3 -B ~/.agents/skills/session-historian/scripts/list_sessions.py --source all --days 7 --limit 10
+python3 -B "$SESSION_HISTORIAN_ROOT/scripts/list_sessions.py" --source all --days 7 --limit 10
 ```
 
 Summarize one session:
 
 ```bash
-python3 -B ~/.agents/skills/session-historian/scripts/summarize_session.py --session-id <id>
+python3 -B "$SESSION_HISTORIAN_ROOT/scripts/summarize_session.py" --session-id <id>
 ```
 
 Search sessions:
 
 ```bash
-python3 -B ~/.agents/skills/session-historian/scripts/search_sessions.py --source all --text "handoff" --days 14
+python3 -B "$SESSION_HISTORIAN_ROOT/scripts/search_sessions.py" --source all --text "handoff" --days 14
 ```
 
 Find recent error-heavy sessions:
 
 ```bash
-python3 -B ~/.agents/skills/session-historian/scripts/find_errors.py --source all --days 7
+python3 -B "$SESSION_HISTORIAN_ROOT/scripts/find_errors.py" --source all --days 7
 ```
 
 Get deep context:
 
 ```bash
-python3 -B ~/.agents/skills/session-historian/scripts/get_session_context.py --session-id <id>
+python3 -B "$SESSION_HISTORIAN_ROOT/scripts/get_session_context.py" --session-id <id>
 ```
 
 Cross-session analysis:
 
 ```bash
-python3 -B ~/.agents/skills/session-historian/scripts/cross_session_analysis.py --source all --days 30 --focus tools
+python3 -B "$SESSION_HISTORIAN_ROOT/scripts/cross_session_analysis.py" --source all --days 30 --focus tools
 ```
 
 ## Behavior

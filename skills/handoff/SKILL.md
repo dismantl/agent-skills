@@ -10,16 +10,18 @@ Create or refresh a shared handoff document in a neutral cross-tool location.
 ## Canonical locations
 
 - Project-local shared handoff: `<repo>/.agents/handoff.md`
-- Tool-local fallbacks:
+- Neutral machine-local fallback: `~/.agent-handoff-context.md`
+- Optional tool-local fallbacks:
   - `~/.codex/handoff-context.md`
   - `~/.claude/handoff-context.md`
 
 ## Read order when resuming
 
 1. `<repo>/.agents/handoff.md`
-2. `<repo>/.claude/handoff.md`
-3. `~/.codex/handoff-context.md`
-4. `~/.claude/handoff-context.md`
+2. `~/.agent-handoff-context.md`
+3. `<repo>/.claude/handoff.md`
+4. `~/.codex/handoff-context.md`
+5. `~/.claude/handoff-context.md`
 
 ## Save workflow
 
@@ -35,8 +37,9 @@ When saving a handoff:
    - last user intent
    - optional user notes
 3. Write a structured markdown handoff to `<repo>/.agents/handoff.md` when a repo root exists.
-4. Refresh the tool-local fallback that matches the current environment when known. If the environment is unclear and both home directories exist, updating both is acceptable.
-5. If the user is resuming rather than saving, read from the first existing path in the read-order list and summarize the relevant context before continuing.
+4. Refresh `~/.agent-handoff-context.md` as the neutral machine-local fallback.
+5. Optionally refresh the tool-local fallback that matches the current environment when known.
+6. If the user is resuming rather than saving, read from the first existing path in the read-order list and summarize the relevant context before continuing.
 
 Use this template:
 
