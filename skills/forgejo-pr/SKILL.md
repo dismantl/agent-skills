@@ -125,10 +125,12 @@ When a user says "what are the comments on PR #42", they usually mean both strea
 **Thread comment** (general discussion):
 
 ```bash
-tea comment <pr-number> -l <login> -r <owner/repo> "the comment body"
+tea comment <pr-number> -l <login> -r <owner/repo> "the comment body" </dev/null
 ```
 
-`tea comment` works for both issues and PRs — they share the same comment API. For multi-line bodies, use a heredoc:
+The trailing `</dev/null` is load-bearing in non-interactive shells (agent harnesses, scripts, anywhere without a real TTY): `tea comment` opens stdin even when the body is provided as an argument, and hangs forever waiting for input otherwise. Close stdin explicitly.
+
+`tea comment` works for both issues and PRs — they share the same comment API. For multi-line bodies, use a heredoc (still close stdin afterward):
 
 ```bash
 tea comment <pr-number> -l <login> -r <owner/repo> "$(cat <<'EOF'
@@ -137,7 +139,7 @@ Three things blocking merge:
 2. the migration needs a backfill plan
 3. security review flagged the new endpoint
 EOF
-)"
+)" </dev/null
 ```
 
 **Line-level inline review comment** — not directly scriptable via `tea`. Tea's `pr review` walks the diff interactively. If the user needs inline comments non-interactively, post them via the Gitea REST API:
@@ -202,6 +204,7 @@ tea pr close <pr-number> -l <login> -r <owner/repo>
 | `404 not found` / `repository does not exist` | Autodiscovery picked the wrong host, or the login lacks access | Pass `-l` and `-r` explicitly; verify `tea logins list` shows a login for the right URL |
 | `no credentials for host <alias>` | Remote uses an SSH-config alias that tea doesn't recognise | Pass `-l` and `-r` explicitly — tea will skip autodiscovery |
 | `tea: command not found` | Not installed | Install via your package manager or `go install`, then `tea login add` to configure |
+| `tea comment` hangs with no output | No TTY and stdin is open — tea waits for interactive input | Add `</dev/null` to close stdin |
 
 ## Cheat sheet
 
@@ -211,7 +214,7 @@ tea pr close <pr-number> -l <login> -r <owner/repo>
 | List open PRs | `tea pr list -l <login> -r <owner/repo>` |
 | View PR + thread comments | `tea pr <n> -l <login> -r <owner/repo> --comments` |
 | List inline review comments | `tea pr review-comments <n> -l <login> -r <owner/repo>` |
-| Add thread comment | `tea comment <n> -l <login> -r <owner/repo> "body"` |
+| Add thread comment | `tea comment <n> -l <login> -r <owner/repo> "body" </dev/null` |
 | Approve | `tea pr approve <n> -l <login> -r <owner/repo> "optional msg"` |
 | Request changes | `tea pr reject <n> -l <login> -r <owner/repo> "reason"` |
 | Checkout PR | `tea pr checkout <n> -l <login> -r <owner/repo>` |
