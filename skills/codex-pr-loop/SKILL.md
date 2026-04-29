@@ -45,7 +45,7 @@ In background mode, the parent should do steps 1-4, then spawn the driver with a
 
 Do not use `tea` for this skill. Use the Forgejo/Gitea REST API directly.
 
-Prefer the local `codex-forgejo-api` helper when it is present on `PATH`; otherwise use `forgejo-api`, which defaults to Codex identity. The helper reads the token from `pass` and wraps `curl` without putting the token in the curl command arguments. Example:
+Prefer the local `codex-forgejo-api` helper when it is present on `PATH`; otherwise use `forgejo-api`, which defaults to Codex identity. The helper reads the token from `gopass` and wraps `curl` without putting the token in the curl command arguments. Example:
 
 ```sh
 codex-forgejo-api GET /repos/dismantl/agent-skills/pulls/1

@@ -5,7 +5,7 @@ description: Use when working with pull requests on a Forgejo or Gitea repositor
 
 # Forgejo / Gitea PRs
 
-Use the local `forgejo-api` helper for API calls. It handles token lookup through `pass` and keeps tokens out of command arguments.
+Use the local `forgejo-api` helper for API calls. It handles token lookup through `gopass` and keeps tokens out of command arguments.
 
 Prefer identity-specific wrappers when available:
 
@@ -151,7 +151,7 @@ Inline review comments use the pull-review endpoints and need exact diff positio
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `pass is required` | `pass` is not installed | Install and initialize `pass`, then add the agent token. |
+| `gopass is required` | `gopass` is not installed | Install gopass, initialize it with age, then add the agent token. |
 | `could not read Forgejo token` | Missing token entry | Add `agents/codex/forgejo-api-token` or `agents/claude/forgejo-api-token`. |
 | 401/403 | Token lacks access | Check token scopes and repo permissions. |
 | 404 | Wrong instance, owner, repo, or PR index | Re-check remote URL and PR metadata. |
