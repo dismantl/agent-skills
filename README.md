@@ -14,6 +14,8 @@ Shared agent skills intended to be reusable across tools like Codex and Claude C
 - `forgejo-pr`
 - `handoff`
 - `session-historian`
+- `claude-pr-loop`
+- `codex-pr-loop`
 
 ## Install
 
@@ -29,6 +31,7 @@ mkdir -p ~/.agents/skills
 ln -s ~/.codex/agent-skills/skills/forgejo-pr ~/.agents/skills/forgejo-pr
 ln -s ~/.codex/agent-skills/skills/handoff ~/.agents/skills/handoff
 ln -s ~/.codex/agent-skills/skills/session-historian ~/.agents/skills/session-historian
+ln -s ~/.codex/agent-skills/skills/codex-pr-loop ~/.agents/skills/codex-pr-loop
 ```
 
 The dotfiles bootstrap handles that automatically.
@@ -43,6 +46,7 @@ Example:
 ```bash
 git clone git@github.com:dismantl/agent-skills.git ~/.claude/agent-skills
 mkdir -p ~/.claude/skills
+ln -s ~/.claude/agent-skills/skills/claude-pr-loop ~/.claude/skills/claude-pr-loop
 ln -s ~/.claude/agent-skills/skills/forgejo-pr ~/.claude/skills/forgejo-pr
 ln -s ~/.claude/agent-skills/skills/handoff ~/.claude/skills/handoff
 ln -s ~/.claude/agent-skills/skills/session-historian ~/.claude/skills/session-historian

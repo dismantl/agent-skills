@@ -57,7 +57,7 @@ The driver runs in a worktree of the *PR's* repo, not this skill's repo, so it c
 > **First steps inside the worktree:**
 >
 > 1. `git fetch origin && git checkout <pr-branch>` so you can apply fixes locally.
-> 2. Read the repo's `CLAUDE.md` if present, especially any section on PR review tokens or auth. Auth hint from the parent: `<auth pattern>`.
+> 2. Read the repo's `CLAUDE.md` if present, especially any section on PR review tokens or auth. Auth hint from the parent: `<auth pattern>`. For Forgejo/Gitea repos, prefer `claude-forgejo-api` when present on `PATH`; otherwise use `forgejo-api` with `FORGEJO_API_IDENTITY=claude` if available.
 >
 > **Each round, spawn a fresh review subagent** via the `Agent` tool with `subagent_type: "general-purpose"` and a prompt that says: invoke the `pr-review-toolkit:review-pr` skill against PR #`<N>` in `<owner/name>` on `<forge>`, post the synthesized review as a comment using the auth pattern above, then return as the final message:
 >
@@ -105,7 +105,7 @@ The driver runs in a worktree of the *PR's* repo, not this skill's repo, so it c
 > **CI gating.** Never start the next review round until CI is green on the latest commit.
 >
 > - GitHub: `gh pr checks <pr> --watch`.
-> - Forgejo: poll `GET <forge-base-url>/api/v1/repos/<owner>/<name>/commits/<sha>/status` until the combined status is `success`.
+> - Forgejo: poll `GET <forge-base-url>/api/v1/repos/<owner>/<name>/commits/<sha>/status` until the combined status is `success`; prefer `claude-forgejo-api GET /repos/<owner>/<name>/commits/<sha>/status` when available.
 >
 > If CI fails, read the failure, fix it, recommit, wait for green, then proceed to the next review round. CI-fix commits don't count against `max_iterations`.
 >
@@ -186,6 +186,6 @@ The driver decides its own stop conditions (merge-ready, iteration cap, deadlock
 The parent reads `.git/config` (or `git remote get-url origin`) to figure out which forge, then names it explicitly in the driver prompt:
 
 - Hostname matches `github.com` -> GitHub. The driver uses `gh` for everything: `gh pr view`, `gh pr checks`, `gh pr merge`.
-- Hostname is anything else (Forgejo / Gitea instance) -> the driver uses the Forgejo API directly. The repo's `CLAUDE.md` typically documents the auth pattern. For acab-ansible specifically, the section "PR review as Claude" in `CLAUDE.md` describes decrypting `claude_forgejo_token` from `inventory/group_vars/all/claude.yml` and posting via `http://devops.acab:3000/api/v1/repos/<owner>/<repo>/issues/<N>/comments`. Other Forgejo repos may use `tea` (see the `forgejo-pr` skill).
+- Hostname is anything else (Forgejo / Gitea instance) -> the driver uses the Forgejo API directly. Prefer `claude-forgejo-api` when present; otherwise use `forgejo-api` with `FORGEJO_API_IDENTITY=claude` if available. Fall back to repo-documented auth only when the helper is unavailable.
 
 The driver inherits this detection via the prompt — tell it which forge and where to find the token, don't make it re-derive.
