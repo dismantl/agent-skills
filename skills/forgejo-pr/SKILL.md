@@ -1,6 +1,6 @@
 ---
 name: forgejo-pr
-description: Use when working with pull requests on a Forgejo or Gitea repository: listing, viewing, commenting, checking status, checking out, creating, merging, or closing PRs on a self-hosted Forgejo/Gitea remote.
+description: "Use when working with pull requests on a Forgejo or Gitea repository: listing, viewing, commenting, checking status, checking out, creating, merging, or closing PRs on a self-hosted Forgejo/Gitea remote."
 ---
 
 # Forgejo / Gitea PRs
