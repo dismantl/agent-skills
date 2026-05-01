@@ -38,7 +38,7 @@ Sample call from a parent session: "loop the review on PR 215 of dismantl/acab-a
 Heads-up the user before starting: the parent session will be focused on this loop until it finishes (a small number of rounds, each typically 1-5 minutes plus CI wait). If they want to do other work in parallel, the cleanest options are:
 
 - **Run one round at a time.** Treat each invocation of `pr-review-toolkit:review-pr` + manual fix-apply as a single round; pause between rounds.
-- **Foreground reviewer, background fixer (advanced).** The parent can spawn each round's reviewer in `run_in_background: true` mode and continue doing other work; when the completion notification arrives, the parent applies fixes and pushes. Reviewer time is the bulk of each round, so this recovers most of the parallelism.
+- **Background reviewer (advanced).** The parent can spawn each round's reviewer with `run_in_background: true` and continue doing other work; when the completion notification arrives, the parent applies fixes and pushes. Reviewer time is the bulk of each round, so this recovers most of the parallelism.
 - **Schedule it.** If the loop is going to run many rounds with long CI waits, ask whether to wrap it in `/schedule` — a remote agent runs the loop without holding the local session.
 
 Don't attempt the old "spawn a long-lived background driver that runs unattended" pattern; it can't fan out to a fresh reviewer per round, so it loses the central property the skill is built on.
