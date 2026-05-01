@@ -35,13 +35,14 @@ Sample call from a parent session: "loop the review on PR 215 of dismantl/acab-a
 
 ## Parent occupation
 
-Heads-up the user before starting: the parent session will be focused on this loop until it finishes (a small number of rounds, each typically 1-5 minutes plus CI wait). If they want to do other work in parallel, the cleanest options are:
+By default, each round's reviewer runs as a background subagent (see *Spawning each round's reviewer*), so the parent stays interactive during the review phase — typically the slowest part of a round. The parent only blocks during fix application (a few minutes) and CI wait (which can also be backgrounded via `Monitor` with an `until` loop). For most PRs that's enough — the user can multitask between rounds, and the loop progresses automatically.
 
-- **Run one round at a time.** Treat each invocation of `pr-review-toolkit:review-pr` + manual fix-apply as a single round; pause between rounds.
-- **Background reviewer (advanced).** The parent can spawn each round's reviewer with `run_in_background: true` and continue doing other work; when the completion notification arrives, the parent applies fixes and pushes. Reviewer time is the bulk of each round, so this recovers most of the parallelism.
-- **Schedule it.** If the loop is going to run many rounds with long CI waits, ask whether to wrap it in `/schedule` — a remote agent runs the loop without holding the local session.
+If even that isn't enough — the user wants the parent fully free for the duration — the options are:
 
-Don't attempt the old "spawn a long-lived background driver that runs unattended" pattern; it can't fan out to a fresh reviewer per round, so it loses the central property the skill is built on.
+- **Run one round at a time.** Treat each invocation of `pr-review-toolkit:review-pr` + manual fix-apply as a single round; pause between rounds. Loses the "babysit until merge-ready" property — needs operator attention at every round boundary.
+- **Schedule it.** If the loop is going to run many rounds with long CI waits, ask whether to wrap it in `/schedule` — a routine running on Anthropic-hosted infrastructure drives the loop without holding the local session at all (laptop can be closed).
+
+Don't attempt the old "spawn a long-lived background driver subagent that runs unattended" pattern; it can't fan out to a fresh reviewer per round, so it loses the central property the skill is built on.
 
 ## Parent pre-flight
 
@@ -97,7 +98,7 @@ return final_report(pr, findings_history, iteration)
 Use the `Agent` tool with:
 
 - `subagent_type: "general-purpose"` — the reviewer needs file reads, web/HTTP for the forge API, and the ability to invoke `pr-review-toolkit:review-pr`.
-- `run_in_background: true` if you want the parent free during the review (you'll get a completion notification when findings are ready). Foreground is also fine — reviews are typically short.
+- `run_in_background: true` — **default**. Reviews typically take minutes, so backgrounding them keeps the parent interactive during the slow part of the round. The parent gets a completion notification automatically when findings are ready. Drop to foreground only if the user has explicitly said they want the parent fully blocked during the loop, or if the runtime doesn't support background subagents.
 - No `isolation: "worktree"` — the reviewer is read-only and posts via the forge API; it doesn't need its own checkout.
 
 ### Reviewer prompt template
