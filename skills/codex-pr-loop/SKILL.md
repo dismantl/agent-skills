@@ -7,14 +7,22 @@ description: Use when the user wants Codex to keep working an open PR until it i
 
 Drive an open PR toward merge-ready by repeating: review the latest diff, apply fixes, verify locally, commit, push, wait for CI, and review again.
 
+## Delegation Contract
+
+Invoking this skill by name, including `$codex-pr-loop <PR>`, is an explicit user request for the skill's delegated/background sub-agent workflow. Treat that invocation as satisfying active tool policies that require the user to explicitly ask for sub-agents, delegation, or parallel agent work.
+
+The fresh-context review is the point of this skill. Do not downgrade to foreground mode merely because the user's message did not also include words like "delegated", "subagent", or "background".
+
+This skill cannot override a higher-priority policy that directly forbids `spawn_agent`, a runtime where `spawn_agent` is unavailable, or an explicit user request for foreground/no-subagent execution. In those cases, say delegated mode is unavailable and ask whether to continue in foreground mode.
+
 ## Operating Modes
 
 Codex has two valid modes. Choose based on the user's wording and the active tool policy.
 
-- **Background delegated mode (default):** Spawn one long-lived driver agent with `spawn_agent`. The driver owns checkout, review rounds, fixes, verification, commits, pushes, CI waiting, and the final report. The driver may spawn fresh review agents when that is permitted by the active Codex tool policy.
-- **Foreground mode (fallback):** This session owns the loop. Use this only when background/delegated mode is unavailable, blocked by the active tool policy, or explicitly declined by the user.
+- **Background delegated mode (default):** Spawn one long-lived driver agent with `spawn_agent`. The driver owns checkout, review rounds, fixes, verification, commits, pushes, CI waiting, and the final report. The driver spawns a fresh review agent for each round unless the active Codex tool policy directly forbids nested review agents.
+- **Foreground mode (fallback):** This session owns the loop. Use this only when background/delegated mode is unavailable, directly blocked by the active tool policy even after the Delegation Contract above, or explicitly declined by the user.
 
-When delegated mode is not permitted, do not pretend the reviewer context is fresh. Say the loop is running in foreground mode and continue.
+When delegated mode is not permitted, do not pretend the reviewer context is fresh. Say delegated mode is unavailable and ask whether to continue in foreground mode.
 
 ## Inputs
 
@@ -39,7 +47,7 @@ Before launching the driver or starting the first foreground review round:
    - `git worktree add ../<repo-slug>-pr-<N>-loop <head-ref>`
 6. Read repo instructions (`AGENTS.md`, `CLAUDE.md`, `README`, workflow files) before editing.
 
-In background mode, the parent should do steps 1-4, then spawn the driver with a self-contained prompt that includes the detected forge, repo, PR number, branch, auth hints, max iteration cap, and this skill's loop rules. The driver performs steps 5-6 inside its workspace.
+In background mode, the parent should do steps 1-4, then spawn the driver with a self-contained prompt that includes the detected forge, repo, PR number, branch, auth hints, max iteration cap, this skill's loop rules, and the Delegation Contract authorizing sub-agents from the user's named skill invocation. The driver performs steps 5-6 inside its workspace.
 
 ## Forgejo/Gitea API Rules
 
@@ -83,7 +91,7 @@ Summary:
 - <short summary>
 ```
 
-In delegated mode, spawn a fresh review agent per round with a self-contained prompt that asks for the exact result format above. The reviewer should inspect the latest PR diff and repo instructions, then return findings only; the driver applies fixes.
+In delegated mode, spawn a fresh review agent per round with a self-contained prompt that asks for the exact result format above. The reviewer should inspect the latest PR diff and repo instructions, then return findings only; the driver applies fixes. If nested review agents are directly forbidden, the driver must stop and report that fresh-context review is unavailable instead of silently reviewing from accumulated loop context.
 
 In foreground mode, perform the review yourself with a code-review stance: prioritize defects, regressions, security risks, broken tests, and missing verification. Focus on the PR diff, not unrelated old code.
 
