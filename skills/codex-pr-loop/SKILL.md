@@ -9,20 +9,29 @@ Drive an open PR toward merge-ready by repeating: review the latest diff, apply 
 
 ## Delegation Contract
 
-Invoking this skill by name, including `$codex-pr-loop <PR>`, is an explicit user request for the skill's delegated/background sub-agent workflow. Treat that invocation as satisfying active tool policies that require the user to explicitly ask for sub-agents, delegation, or parallel agent work.
+Invoking this skill by name, including `$codex-pr-loop <PR>`, is an explicit user request for the parent session to spawn fresh review sub-agents during the PR loop. Treat that invocation as satisfying active tool policies that require the user to explicitly ask for sub-agents, delegation, or parallel agent work.
 
-The fresh-context review is the point of this skill. Do not downgrade to foreground mode merely because the user's message did not also include words like "delegated", "subagent", or "background".
+The fresh-context review is the point of this skill. Do not downgrade to foreground review merely because the user's message did not also include words like "delegated", "subagent", or "background".
 
-This skill cannot override a higher-priority policy that directly forbids `spawn_agent`, a runtime where `spawn_agent` is unavailable, or an explicit user request for foreground/no-subagent execution. In those cases, say delegated mode is unavailable and ask whether to continue in foreground mode.
+This skill cannot override a higher-priority policy that directly forbids `spawn_agent`, a runtime where `spawn_agent` is unavailable, or an explicit user request for foreground/no-subagent execution. In those cases, say fresh-context review is unavailable and ask whether to continue in foreground mode.
+
+## Architecture
+
+The loop runs across two contexts. Do not add a third tier.
+
+- **Parent session:** Owns the loop. It checks out the PR branch, spawns a fresh reviewer each round, applies accepted findings, runs verification, commits, pushes, waits for CI, detects deadlocks, and writes the final report.
+- **Fresh review sub-agent:** Reviews the latest PR diff and repo instructions, then returns findings only. It must not edit files, commit, push, merge, or run the loop.
+
+Do not spawn a long-lived driver agent to own the loop. In Codex, spawned agents cannot be assumed to have `spawn_agent` available, so a driver agent cannot reliably create fresh reviewer agents. The parent must chain reviewer agents from the main session to preserve fresh context.
 
 ## Operating Modes
 
 Codex has two valid modes. Choose based on the user's wording and the active tool policy.
 
-- **Background delegated mode (default):** Spawn one long-lived driver agent with `spawn_agent`. The driver owns checkout, review rounds, fixes, verification, commits, pushes, CI waiting, and the final report. The driver spawns a fresh review agent for each round unless the active Codex tool policy directly forbids nested review agents.
-- **Foreground mode (fallback):** This session owns the loop. Use this only when background/delegated mode is unavailable, directly blocked by the active tool policy even after the Delegation Contract above, or explicitly declined by the user.
+- **Fresh-review loop (default):** The parent session owns the loop and spawns a fresh review sub-agent for each review round.
+- **Foreground review (fallback):** The parent session reviews the PR itself. Use this only when fresh review sub-agents are unavailable, directly blocked by the active tool policy even after the Delegation Contract above, or explicitly declined by the user.
 
-When delegated mode is not permitted, do not pretend the reviewer context is fresh. Say delegated mode is unavailable and ask whether to continue in foreground mode.
+When fresh review sub-agents are not permitted, do not pretend the reviewer context is fresh. Say fresh-context review is unavailable and ask whether to continue in foreground mode.
 
 ## Inputs
 
@@ -32,7 +41,7 @@ When delegated mode is not permitted, do not pretend the reviewer context is fre
 
 ## Parent Pre-Flight
 
-Before launching the driver or starting the first foreground review round:
+Before starting the first review round:
 
 1. Confirm the worktree state with `git status --short`; do not overwrite unrelated user changes.
 2. Detect the repo remote with `git remote get-url origin`.
@@ -47,7 +56,7 @@ Before launching the driver or starting the first foreground review round:
    - `git worktree add ../<repo-slug>-pr-<N>-loop <head-ref>`
 6. Read repo instructions (`AGENTS.md`, `CLAUDE.md`, `README`, workflow files) before editing.
 
-In background mode, the parent should do steps 1-4, then spawn the driver with a self-contained prompt that includes the detected forge, repo, PR number, branch, auth hints, max iteration cap, this skill's loop rules, and the Delegation Contract authorizing sub-agents from the user's named skill invocation. The driver performs steps 5-6 inside its workspace.
+If the user asks for the loop to be fully backgrounded, explain that the parent session must remain the orchestrator so it can spawn a fresh reviewer each round. A long-lived background driver loses the fresh-review guarantee.
 
 ## Forgejo/Gitea API Rules
 
@@ -91,9 +100,13 @@ Summary:
 - <short summary>
 ```
 
-In delegated mode, spawn a fresh review agent per round with a self-contained prompt that asks for the exact result format above. The reviewer should inspect the latest PR diff and repo instructions, then return findings only; the driver applies fixes. If nested review agents are directly forbidden, the driver must stop and report that fresh-context review is unavailable instead of silently reviewing from accumulated loop context.
+In the default mode, the parent spawns a fresh review agent per round with a self-contained prompt that asks for the exact result format above. Use `fork_context: false` so the reviewer does not inherit the parent's accumulated rationale. Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hints, relevant safety rules, and the output contract. Do not include previous round findings unless the explicit purpose is deadlock adjudication.
 
-In foreground mode, perform the review yourself with a code-review stance: prioritize defects, regressions, security risks, broken tests, and missing verification. Focus on the PR diff, not unrelated old code.
+The reviewer must inspect the latest PR diff and repo instructions, then return findings only. The parent applies fixes and posts the synthesized review summary to the PR.
+
+If fresh review agents are unavailable, stop and report that fresh-context review is unavailable instead of silently reviewing from accumulated loop context.
+
+In foreground fallback mode, perform the review yourself with a code-review stance: prioritize defects, regressions, security risks, broken tests, and missing verification. Focus on the PR diff, not unrelated old code.
 
 When auth is available, post the synthesized review summary to the PR each round. On GitHub, use `gh pr comment`. On Forgejo/Gitea, use the issue-comment API above.
 
@@ -103,7 +116,7 @@ When auth is available, post the synthesized review summary to the PR each round
 iteration = 0
 while iteration < max_iterations:
   iteration += 1
-  review latest PR diff
+  spawn a fresh review agent to review latest PR diff
   if verdict is merge-ready and critical == 0 and important == 0:
     stop
   apply accepted critical and important fixes
