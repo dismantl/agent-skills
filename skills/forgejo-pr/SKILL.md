@@ -94,6 +94,21 @@ $api POST /repos/<owner>/<repo>/pulls \
   --data '{"head":"feature-branch","base":"main","title":"feat: add thing","body":"## Summary\n- change\n\n## Test plan\n- [x] tests"}'
 ```
 
+For multi-line bodies, pipe a heredoc through `--data @-`:
+
+```sh
+$api POST /repos/<owner>/<repo>/pulls --data @- <<'JSON'
+{
+  "head": "feature-branch",
+  "base": "main",
+  "title": "feat: add thing",
+  "body": "## Summary\n- change one\n- change two\n\n## Test plan\n- [x] tests"
+}
+JSON
+```
+
+The helper reads its curl config from a temp file, so stdin is free for `--data @-`. Keep the heredoc delimiter quoted (`<<'JSON'`) so the shell doesn't expand `$` or backticks inside the JSON.
+
 Check whether a PR is already merged:
 
 ```sh
@@ -156,3 +171,4 @@ Inline review comments use the pull-review endpoints and need exact diff positio
 | 401/403 | Token lacks access | Check token scopes and repo permissions. |
 | 404 | Wrong instance, owner, repo, or PR index | Re-check remote URL and PR metadata. |
 | Empty or truncated lists | Pagination limit | Query narrower, or inspect `/swagger.v1.json` for pagination parameters. |
+| `curl: (22) ... error: 4xx` followed by a JSON `{"message": ...}` | HTTP error from Forgejo | The helper exits non-zero on 4xx/5xx but prints the response body too. Read the message to decide: validation error (fix payload), 404 (wrong path), 401 (token scope). |
