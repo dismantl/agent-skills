@@ -109,6 +109,8 @@ JSON
 
 The helper reads its curl config from a temp file, so stdin is free for `--data @-`. Keep the heredoc delimiter quoted (`<<'JSON'`) so the shell doesn't expand `$` or backticks inside the JSON.
 
+Prefer `--data @-` even for single-line bodies when the JSON contains shell metacharacters — `(`, `)`, `$`, backticks, or unescaped single quotes inside a `--data '<json>'` invocation will be parsed by bash before the helper ever runs (e.g. a PR body referencing `(PR 1)` triggers `syntax error near unexpected token '('`). The heredoc form sidesteps the parser entirely.
+
 Check whether a PR is already merged:
 
 ```sh
@@ -170,5 +172,6 @@ Inline review comments use the pull-review endpoints and need exact diff positio
 | `could not read Forgejo token` | Missing token entry | Add `agents/codex/forgejo-api-token` or `agents/claude/forgejo-api-token`. |
 | 401/403 | Token lacks access | Check token scopes and repo permissions. |
 | 404 | Wrong instance, owner, repo, or PR index | Re-check remote URL and PR metadata. |
+| 404 with `could not find '<branch>' to be a commit, branch or tag` on PR creation | Stacked-PR base branch was deleted (typically because the parent PR merged and Forgejo auto-deleted its branch) | Retarget the child PR to `main` (or the new common ancestor) and rebase the head branch onto it. Then retry creation. |
 | Empty or truncated lists | Pagination limit | Query narrower, or inspect `/swagger.v1.json` for pagination parameters. |
 | `curl: (22) ... error: 4xx` followed by a JSON `{"message": ...}` | HTTP error from Forgejo | The helper exits non-zero on 4xx/5xx but prints the response body too. Read the message to decide: validation error (fix payload), 404 (wrong path), 401 (token scope). |
