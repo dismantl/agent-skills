@@ -89,24 +89,34 @@ Post review summaries with JSON:
 
 ## Review Round
 
-Each round produces a structured result:
+Each round produces a structured result. The exact format is the `code-review` skill's Output Contract — see that skill for the full specification. In short:
 
 ```text
 Verdict: merge-ready | needs-work | blocked
 Severity: critical=<N> important=<N> minor=<N>
-Critical/important findings:
-- <file>: <one-line finding>
+
+Critical findings:
+- <file>:<line> — <one-line finding>
+
+Important findings:
+- <file>:<line> — <one-line finding>
+
+Minor findings:
+- <file>:<line> — <one-line finding>
+
 Summary:
-- <short summary>
+<1–3 sentences>
 ```
 
-In the default mode, the parent spawns a fresh review agent per round with a self-contained prompt that asks for the exact result format above. Use `fork_context: false` so the reviewer does not inherit the parent's accumulated rationale. Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hints, relevant safety rules, and the output contract. Do not include previous round findings unless the explicit purpose is deadlock adjudication.
+Empty severity sections are omitted (don't emit "Critical findings: none" — leave the section out and let the count speak).
+
+In the default mode, the parent spawns a fresh review agent per round with a self-contained prompt that tells it to invoke the `code-review` skill and return its Output Contract verbatim. Use `fork_context: false` so the reviewer does not inherit the parent's accumulated rationale. Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hints, relevant safety rules, and a reminder that the final message must follow the `code-review` skill's Output Contract. Do not include previous round findings unless the explicit purpose is deadlock adjudication.
 
 The reviewer must inspect the latest PR diff and repo instructions, then return findings only. The parent applies fixes and posts the synthesized review summary to the PR.
 
 If fresh review agents are unavailable, stop and report that fresh-context review is unavailable instead of silently reviewing from accumulated loop context.
 
-In foreground fallback mode, perform the review yourself with a code-review stance: prioritize defects, regressions, security risks, broken tests, and missing verification. Focus on the PR diff, not unrelated old code.
+In foreground fallback mode, perform the review yourself by invoking the `code-review` skill against the latest PR diff. Same axes, same Output Contract — the only difference is that the parent's context is no longer fresh, so deadlock detection across rounds becomes harder.
 
 When auth is available, post the synthesized review summary to the PR each round. On GitHub, use `gh pr comment`. On Forgejo/Gitea, use the issue-comment API above.
 

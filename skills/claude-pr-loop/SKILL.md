@@ -1,6 +1,6 @@
 ---
 name: claude-pr-loop
-description: Use when the user wants to drive an open PR to merge-ready by iterating on it — phrases like "loop on this PR", "review and fix until clean", "babysit PR #N", "keep reviewing this PR", "run the review loop on this", or any request to repeatedly review-then-fix until a PR is good to merge. The parent session owns the loop, spawning a fresh-context review subagent each round via `pr-review-toolkit:review-pr` and then applying the findings itself. Use this instead of running a single review round when the user expects multiple rounds, or asks you to "get this PR to green" without specifying how.
+description: Use when the user wants to drive an open PR to merge-ready by iterating on it — phrases like "loop on this PR", "review and fix until clean", "babysit PR #N", "keep reviewing this PR", "run the review loop on this", or any request to repeatedly review-then-fix until a PR is good to merge. The parent session owns the loop, spawning a fresh-context review subagent each round that invokes the `code-review` skill, and then applying the findings itself. Use this instead of running a single review round when the user expects multiple rounds, or asks you to "get this PR to green" without specifying how.
 ---
 
 # Claude PR Loop
@@ -9,16 +9,16 @@ Drive an open PR to merge-ready by alternating fresh-context reviews with statef
 
 ## When to use
 
-Use this when one review pass isn't enough — when the user wants the PR worked all the way to merge-ready and is willing to let several iterations run. Use the single-shot `pr-review-toolkit:review-pr` directly if the user only wants one round of feedback.
+Use this when one review pass isn't enough — when the user wants the PR worked all the way to merge-ready and is willing to let several iterations run. Invoke the `code-review` skill directly (without this loop) if the user only wants one round of feedback.
 
 ## Architecture: two tiers
 
 The loop runs across two contexts. Each tier has a distinct role; do not blur them.
 
 - **Parent (this session).** Owns the loop. Detects the forge, spawns a fresh review subagent each round, applies findings, runs local checks, commits, pushes, and waits for CI between rounds. State accumulates here — what was fixed, what was deferred, what previous rounds flagged — which informs cross-round decisions like deadlock detection and judging "the same finding came back, did we actually fix it or not."
-- **Review subagent (fresh per round).** Invokes `pr-review-toolkit:review-pr`, posts the synthesized review as a PR comment, returns findings. Each round is a brand-new context.
+- **Review subagent (fresh per round).** Invokes the `code-review` skill against the latest PR diff, posts the synthesized review as a PR comment, returns findings in the skill's structured output format. Each round is a brand-new context.
 
-The reviewer must stay fresh because the toolkit's value comes from a reviewer that hasn't seen prior fix attempts and won't rationalize them. A continued context drifts toward agreement with the work it just observed. The parent's continuous context is what makes the *loop* work — accumulated state is what powers deadlock detection and lets the parent push back on a finding the reviewer keeps re-raising.
+The reviewer must stay fresh because the review's value comes from a reviewer that hasn't seen prior fix attempts and won't rationalize them. A continued context drifts toward agreement with the work it just observed. The parent's continuous context is what makes the *loop* work — accumulated state is what powers deadlock detection and lets the parent push back on a finding the reviewer keeps re-raising.
 
 > **Why isn't there a long-lived "driver" subagent that owns the loop?**
 > Earlier versions of this skill described a three-tier architecture where a driver subagent owned the loop and itself spawned review subagents. That doesn't work: per the [Claude Code subagents docs](https://code.claude.com/docs/en/subagents.md), **subagents cannot spawn other subagents** — `Agent(...)` calls inside a subagent have no effect. The official guidance is to "chain subagents from your main session instead," which is what this skill now does. The cost is that the parent stays focused on the loop until it finishes; if the user explicitly wants the parent freed up, see *Parent occupation* below.
@@ -39,7 +39,7 @@ By default, each round's reviewer runs as a background subagent (see *Spawning e
 
 If even that isn't enough — the user wants the parent fully free for the duration — the options are:
 
-- **Run one round at a time.** Treat each invocation of `pr-review-toolkit:review-pr` + manual fix-apply as a single round; pause between rounds. Loses the "babysit until merge-ready" property — needs operator attention at every round boundary.
+- **Run one round at a time.** Treat each invocation of the `code-review` skill + manual fix-apply as a single round; pause between rounds. Loses the "babysit until merge-ready" property — needs operator attention at every round boundary.
 - **Schedule it.** If the loop is going to run many rounds with long CI waits, ask whether to wrap it in `/schedule` — a routine running on Anthropic-hosted infrastructure drives the loop without holding the local session at all (laptop can be closed).
 
 Don't attempt the old "spawn a long-lived background driver subagent that runs unattended" pattern; it can't fan out to a fresh reviewer per round, so it loses the central property the skill is built on.
@@ -97,29 +97,26 @@ return final_report(pr, findings_history, iteration)
 
 Use the `Agent` tool with:
 
-- `subagent_type: "general-purpose"` — the reviewer needs file reads, web/HTTP for the forge API, and the ability to invoke `pr-review-toolkit:review-pr`.
+- `subagent_type: "general-purpose"` — the reviewer needs file reads, web/HTTP for the forge API, and the ability to invoke the `code-review` skill.
 - `run_in_background: true` — **default**. Reviews typically take minutes, so backgrounding them keeps the parent interactive during the slow part of the round. The parent gets a completion notification automatically when findings are ready. Drop to foreground only if the user has explicitly said they want the parent fully blocked during the loop, or if the runtime doesn't support background subagents.
 - No `isolation: "worktree"` — the reviewer is read-only and posts via the forge API; it doesn't need its own checkout.
 
 ### Reviewer prompt template
 
-> Invoke the `pr-review-toolkit:review-pr` skill against PR #`<N>` in `<owner/name>` on `<forge>` (`<forge-base-url>`).
+> Invoke the `code-review` skill against PR #`<N>` in `<owner/name>` on `<forge>` (`<forge-base-url>`).
 >
-> Auth pattern: `<auth pattern>`. For posting the synthesized review as a PR comment:
+> Pull the diff with `gh pr diff <N>` (GitHub) or the Forgejo `pulls/<N>.diff` endpoint, plus PR metadata (`gh pr view <N>` / `pulls/<N>`). Read the repo's `CLAUDE.md` / `AGENTS.md` / `CONTRIBUTING.md` if present so findings respect project conventions.
+>
+> Run the review across all applicable axes (Correctness, Readability, Architecture, Security, Performance, Tests, Comments, Error handling, Type design where relevant, Change-level concerns).
+>
+> Auth pattern: `<auth pattern>`. After producing the review, post it as a PR comment:
 >
 > - GitHub: `gh pr comment <N> --body-file -` (read body from stdin)
 > - Forgejo/Gitea: `claude-forgejo-api POST /repos/<owner>/<name>/issues/<N>/comments` if available; otherwise `curl -H "Authorization: token <token>"` against the same endpoint. PRs and issues share the comments endpoint on Forgejo.
 >
-> After the comment is posted, return as your final message **exactly this structure** (no extra prose):
->
-> - **Verdict**: one of `merge-ready`, `needs-work`, `blocked`
-> - **Severity counts**: `critical=<X> important=<Y> minor=<Z>`
-> - **Critical findings**: list with `<file>:<line>` and one-line description (omit section if empty)
-> - **Important findings**: list with `<file>:<line>` and one-line description (omit section if empty)
-> - **Minor findings**: list with `<file>:<line>` and one-line description (omit section if empty)
-> - **Summary**: the toolkit's overall summary in 1-3 sentences
+> After the comment is posted, return as your final message the **`code-review` skill's Output Contract** verbatim — `Verdict:` line, `Severity:` line, severity-grouped findings sections (omit empty sections), and a 1–3 sentence `Summary:`. No extra prose, no preamble.
 
-If the reviewer returns something unparseable, re-spawn once with an explicit reminder to follow that return-format contract. If it fails again, surface the toolkit output verbatim and stop.
+If the reviewer returns something unparseable, re-spawn once with an explicit reminder to follow the `code-review` skill's Output Contract. If it fails again, surface the reviewer's output verbatim and stop.
 
 ## Applying fixes
 

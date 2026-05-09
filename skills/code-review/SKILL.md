@@ -1,0 +1,315 @@
+---
+name: code-review
+description: "Use when reviewing a pull request, a diff, or a chunk of recently written code — phrases like \"review this PR\", \"review the diff\", \"code review this\", \"is this ready to merge\", or any request to assess code quality before it lands. Produces a structured, severity-rated review across correctness, readability, architecture, security, performance, tests, comments, and error handling. Tool-agnostic: works in Codex, Claude Code, or any agent that can read a diff."
+---
+
+# Code Review
+
+Multi-axis review of a code change, producing a structured verdict that downstream loops, humans, or merge-bot tooling can consume without further parsing.
+
+This skill is the *thinking framework and output contract*. It does not post comments, fetch diffs, or push fixes — those live with the caller (e.g. a PR loop, an interactive session, a CI hook). Hand the reviewer a diff and any repo guidance; the reviewer returns the structured output described in [Output Contract](#output-contract).
+
+## When to use
+
+- Before merging any PR or change.
+- When a fresh-context reviewer is needed (PR loops spawn one of these per round).
+- After completing a feature, fixing a bug, or generating code with another agent.
+- When a single-axis review (just security, just tests) is wanted — invoke this skill and restrict the axes.
+
+For continuous "review then fix until merge-ready" loops, see `claude-pr-loop` or `codex-pr-loop`. Those skills *use* this one as the per-round reviewer.
+
+## Approval philosophy
+
+Approve when the change definitely improves overall code health, even if it isn't perfect. Perfect code does not exist. Don't block a change because it isn't how you would have written it. If it improves the codebase and follows project conventions, approve it.
+
+Don't rubber-stamp either. "LGTM" without evidence helps no one. Push back on real issues directly, propose alternatives, and accept override gracefully when the author has full context.
+
+## Inputs
+
+- **Diff** — the changed lines plus enough surrounding context to assess data flow. Sources include `git diff`, `git diff --cached`, `gh pr diff <N>`, or a Forgejo `pulls/{n}.diff` endpoint.
+- **PR metadata** (when applicable) — title, description, author, base branch.
+- **Repo guidance** — any `CLAUDE.md`, `AGENTS.md`, `README`, style guide, or `CONTRIBUTING.md` the change must conform to. Conventions in those files override generic best practices.
+- **Optional axis filter** — restrict the review to specific axes (e.g. `security` only, `tests + errors`). Default is all applicable axes.
+
+## The axes
+
+Every review evaluates the change across these dimensions, but **only run an axis when the diff can actually trigger it**. Walking every axis on every PR wastes time and tokens, dilutes signal, and produces noise findings that get rationalized into "important." Decide axis applicability *before* reviewing, using [Axis applicability](#axis-applicability) below.
+
+### 1. Correctness
+
+Does the code do what it claims to do?
+
+- Matches the spec or task requirements.
+- Edge cases handled (null, empty, boundary values, off-by-one).
+- Error paths handled, not just the happy path.
+- Tests actually exercise the behavior, not implementation details.
+- No race conditions, state inconsistencies, or unhandled async failures.
+
+### 2. Readability and simplicity
+
+Can another engineer (or agent) understand this without the author explaining it?
+
+- Names descriptive and consistent with project conventions (no `temp`, `data`, `result` without context).
+- Control flow is straightforward (avoid nested ternaries, deep callbacks).
+- Code organized logically (related code grouped, clear module boundaries).
+- "Clever" tricks justified or simplified.
+- Could this be done in fewer lines without losing clarity?
+- Abstractions earn their complexity (don't generalize until the third use case).
+- Comments clarify *why*, not *what*. Obvious code shouldn't be commented.
+- No dead-code artifacts: no-op variables (`_unused`), backwards-compat shims, `// removed` tombstones.
+
+### 3. Architecture
+
+Does the change fit the system's design?
+
+- Follows existing patterns or introduces a new one *with justification*.
+- Maintains clean module boundaries.
+- Code duplication that should be shared.
+- Dependencies flow in the right direction (no circular deps).
+- Abstraction level appropriate (not over-engineered, not too coupled).
+
+### 4. Security
+
+Real, exploitable issues only — not theoretical risks or best-practice nitpicks. Reason internally about exploitability × impact, then map to the [canonical severities](#severity-vocabulary) for the output contract.
+
+Look for:
+
+- **Injection / input handling**: SQL injection (raw concatenation), command injection (unsanitized shell input), XSS (unescaped user input in HTML/templates), path traversal, SSRF (user URLs to HTTP clients without allowlist), template injection, unsafe deserialization.
+- **Auth / authz**: missing or bypassable authentication, broken access control (IDOR, horizontal/vertical escalation), hardcoded credentials/keys/secrets, weak session management, missing CSRF on state-changing operations, JWT issues (missing signature verification, algorithm confusion, weak secrets).
+- **Crypto / secrets**: broken algorithms (MD5, SHA1, DES, RC4, ECB) for security purposes, hardcoded keys/IVs, weak key derivation, non-cryptographic randomness for security-sensitive tokens, secrets in logs / errors / client bundles.
+- **Data exposure**: sensitive data in logs (passwords, tokens, PII), verbose error messages leaking internals, missing rate limiting on auth or sensitive endpoints, unencrypted transit/storage, overly permissive CORS.
+- **Logic / config**: TOCTOU races in security-critical paths, missing validation at trust boundaries, insecure defaults (debug mode, permissive perms, open redirects), dependency vulnerabilities affecting the actual usage pattern, missing security headers in new endpoint code (CSP, HSTS, X-Frame-Options).
+
+For each finding, internally rate **exploitability** (High / Medium / Low — how easy to exploit?) and **impact** (Critical / High / Medium / Low — what happens if exploited?), then map:
+
+- **High exploitability + Critical/High impact** → `critical`
+- **Medium+ exploitability + High impact**, or **High exploitability + Medium impact** → `important`
+- **Medium exploitability + Medium impact**, or anything with real but lower risk → `minor`
+
+If you cite a CVE, name the version and confirm the usage pattern is actually affected.
+
+### 5. Performance
+
+Real bottlenecks only. Quantify when possible.
+
+- N+1 query patterns.
+- Unbounded loops or unconstrained data fetching.
+- Synchronous operations that should be async.
+- Unnecessary re-renders in UI components.
+- Missing pagination on list endpoints.
+- Large allocations in hot paths.
+
+"This N+1 query will add ~50ms per item in the list" beats "this could be slow."
+
+### 6. Tests
+
+- Tests exist for the change.
+- They test behavior, not implementation details.
+- Edge cases covered (the same ones flagged under Correctness).
+- Bug-fix PRs include a regression test.
+- Test names describe what they verify.
+- The tests would actually catch a regression if the code changed.
+
+### 7. Comments and documentation
+
+- Comments accurate vs the code they describe (no comment rot).
+- Public APIs documented at the boundary.
+- Non-obvious *why* explained; obvious *what* not commented.
+- Docstrings match parameter names and return types.
+- Removed code's comments also removed (no orphaned references).
+
+### 8. Error handling
+
+No silent failures. Catch blocks that swallow errors are defects.
+
+- Every error path either logs (with context) or surfaces to the user actionably.
+- Catch blocks don't `return null` / `return false` / no-op without explanation.
+- Fallback behavior is explicit and bounded; "fallback to whatever" is a smell.
+- Errors carry context so callers can debug without adding instrumentation.
+- Language-specific: Go errors wrapped with `fmt.Errorf("doing X: %w", err)`; Python exceptions chained with `from`; JS rejections not lost in fire-and-forget promises.
+
+### 9. Type design
+
+- Types express invariants — illegal states unrepresentable where practical.
+- Encapsulation: internals not leaked; mutation paths controlled.
+- Useful: actually constrains the code that uses them, vs being a synonym for `any`.
+- Enforced: invariants checked at the boundary, not assumed.
+
+### 10. Change-level concerns
+
+- **Size**: ~100 LOC is good, ~300 LOC acceptable for a single logical change, ~1000 LOC is too large — flag for splitting unless it's an automated refactor or wholesale deletion.
+- **Scope**: one logical change per change. Refactors mixed with feature work should be split.
+- **Description**: PR/commit message stands alone in version control history. Imperative first line, body explains *why*, links to issues/benchmarks/design docs. Anti-patterns: "Fix bug", "Phase 1", "Moving code from A to B".
+- **Dependencies added**: prefer stdlib; new deps need justification (size, maintenance, license, vulnerabilities).
+
+## Axis applicability
+
+Decide which axes apply *before* reviewing. Skipping inapplicable axes is the point — a single-mind reviewer that dutifully walks all ten on a docs-only PR will manufacture noise.
+
+| Axis | Always run | Skip when... |
+|---|---|---|
+| Correctness | yes | — |
+| Readability | yes | (skip only on a pure mechanical rename / generated-file diff) |
+| Architecture | usually | diff is docs-only, config-only, or a pure rename |
+| **Security** | usually | diff is docs-only or comments-only with no executable paths added/changed |
+| Performance | conditional | no hot paths, queries, loops, network calls, or rendering touched |
+| **Tests** | conditional | the diff *is* the tests, or it's docs/config-only with no behavior change |
+| Comments | conditional | no comments or docstrings added, modified, or made stale by code changes |
+| **Error handling** | conditional | no `try`/`catch`/`except`/error-return paths added or changed |
+| Type design | conditional | no types, structs, classes, interfaces, or schemas added or modified |
+| Change-level | yes | — |
+
+"Conditional" axes are the ones the toolkit-style review treats as opt-in specialists. The single-mind reviewer follows the same rule: if the diff doesn't touch the axis surface area, don't review it. Don't manufacture findings to justify having checked.
+
+A docs-only PR typically runs Correctness (does the doc match the code?), Readability, Comments, and Change-level — and skips the rest. A pure dependency-version bump runs Correctness, Security (CVE check on the new version), and Change-level. A test-only PR runs Correctness, Readability, Tests (is the new test useful and well-named?), and Change-level.
+
+When you skip an axis, **don't list it as a finding-free section** — just don't mention it. The Output Contract's empty-section rule already handles this.
+
+In the [optional fan-out](#optional-fan-out-claude-code-only) path, the same applicability table determines which specialists to dispatch. Don't dispatch a security specialist for a docs-only PR.
+
+## Severity vocabulary
+
+Use these three at the verdict level — the output contract depends on them and downstream loops parse them:
+
+| Severity | Meaning |
+|---|---|
+| **critical** | Blocks merge. Security vulnerability, data loss, broken functionality, exploitable bug. |
+| **important** | Should fix before merge. Real defect, architectural problem, missing test for new logic, silent failure. |
+| **minor** | Nice to fix; safe to defer. Style, clarity nit, optional refactor, low-impact perf, FYI. |
+
+Inline comments addressed to the author may use finer-grained prefixes (`Nit:`, `Optional:`, `Consider:`, `FYI`) so authors know what's required vs optional, but the **counts in the output contract use only `critical / important / minor`**.
+
+## What you do NOT flag
+
+To keep signal high:
+
+- Issues a linter, type checker, or SAST tool would catch (assume those run in CI).
+- Pre-existing issues in unchanged code, unless the diff makes them newly exploitable / reachable.
+- Theoretical timing attacks without a realistic exploitation path.
+- Dependencies with CVEs that don't affect the usage pattern in this code.
+- Generic "you should add rate limiting" without evidence of an actual abuse vector.
+- Missing security headers on non-web endpoints.
+- Code style preferences dressed up as substantive concerns.
+- Suggestions whose only justification is "I would have written it differently."
+
+## Process
+
+1. **Read the context.** PR title, description, linked issue, and any repo guidance (`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`). The change's *intent* shapes how you weight findings.
+2. **Read the tests first.** Tests reveal intent and coverage. A change with well-named, behavior-focused tests is easier to assess.
+3. **Walk the diff with all axes in mind**, file by file. Don't single-pass for one axis at a time unless the user asked for that — issues cluster, and missing context across axes is how false positives happen.
+4. **Follow data flows from changed code into existing code** when needed to assess risk (especially for security and correctness). Don't audit the whole codebase; do trace what the diff touches.
+5. **Categorize each finding** as `critical`, `important`, or `minor`. Group by severity in the output, critical first.
+6. **Quantify when possible.** "Adds ~50ms per item, list pages typically have 200 items" beats "could be slow."
+7. **Verify the verification.** Did tests run? Did the build pass? Was a UI change actually loaded in a browser? If the author claims "tested manually," is there a screenshot or a description?
+8. **Assemble the output** per [Output Contract](#output-contract).
+
+## Output Contract
+
+The reviewer's final message must follow this exact structure. Loops parse it; downstream tooling depends on it.
+
+```
+Verdict: <merge-ready | needs-work | blocked>
+Severity: critical=<N> important=<N> minor=<N>
+
+Critical findings:
+- <path/to/file>:<line> — <one-line description>
+- ...
+
+Important findings:
+- <path/to/file>:<line> — <one-line description>
+- ...
+
+Minor findings:
+- <path/to/file>:<line> — <one-line description>
+- ...
+
+Summary:
+<1–3 sentences: overall assessment, biggest themes, next step.>
+```
+
+Rules:
+
+- Omit a findings section entirely if the count for that severity is zero. Do not write "Critical findings: none" — just leave the section out and let the count speak.
+- `Verdict: merge-ready` requires `critical=0` and `important=0`. Minor findings are allowed at merge-ready.
+- `Verdict: needs-work` is the default when at least one critical or important finding exists.
+- `Verdict: blocked` means the review couldn't be completed (diff unreadable, repo guidance missing, ambiguous intent that needs a human). Use sparingly.
+- File:line references are required for every finding. If a finding spans a region, use the start line.
+- The summary is human-facing and short. Detail goes in the per-finding lines.
+
+For each finding, when posting an inline review comment to the PR (this skill doesn't post; the caller does), include:
+
+- **Severity**: critical / important / minor
+- **Category**: e.g. SQL injection, missing test, dead code, N+1 query
+- **What**: the issue in plain language
+- **Why it matters**: the consequence (exploit scenario for security, performance impact with numbers, regression risk for tests)
+- **Fix**: a concrete code change or approach
+- **Repo guidance**: if `CLAUDE.md` / `AGENTS.md` / style guide says something relevant, cite it
+
+A clean report is a good report. If nothing is wrong, return `Verdict: merge-ready`, zero counts, and a one-sentence summary noting what you checked.
+
+## Optional fan-out (Claude Code only)
+
+If the runtime supports subagents (e.g. Claude Code's `Agent` tool), the reviewer may dispatch per-axis specialists in parallel and aggregate, instead of reviewing single-mind. **Use [Axis applicability](#axis-applicability) to decide which specialists to dispatch** — don't fan out to all of them on every PR. A docs-only PR doesn't need a security or types specialist; dispatching them anyway costs time and tokens for guaranteed-empty reports.
+
+Specialists that map cleanly:
+
+| Axis | Specialist focus |
+|---|---|
+| Security | OWASP Top 10, exploitability/impact rating, low false-positive bias |
+| Tests | Behavioral coverage, regression-test presence on bug fixes, test quality |
+| Errors | Silent failures, swallowed catches, missing context propagation |
+| Comments | Comment rot, accuracy vs code, documentation completeness |
+| Types | Encapsulation, invariant expression, enforcement |
+| Code (general) | Project-convention compliance per `CLAUDE.md`, miscellaneous quality |
+
+The aggregated output must still satisfy the [Output Contract](#output-contract). Don't surface raw per-specialist sub-reports as the final message — the loop and downstream tools expect the canonical format.
+
+In Codex (no subagents) or any environment where fan-out isn't available, review single-mind across all axes. Both produce equally valid output; fan-out is a speed optimization, not a correctness requirement.
+
+## Honesty
+
+- Don't soften real issues. "This might be a minor concern" when it's a critical bug is dishonest.
+- Don't accept "I'll clean it up later." Experience shows deferred cleanup rarely happens. Require cleanup before merge unless it's a genuine emergency, and ask for a follow-up issue with self-assignment.
+- Push back on approaches with clear problems. Sycophancy is a failure mode in reviews.
+- Comment on code, not people. Reframe personal critiques to focus on the code.
+- Accept override gracefully when the author has full context and disagrees.
+
+## Disagreement resolution
+
+When the author pushes back on a finding:
+
+1. **Technical facts and data** override opinions and preferences.
+2. **Repo guidance and style guides** are authoritative on style matters.
+3. **Engineering principles** are the basis for design disagreements, not personal taste.
+4. **Codebase consistency** is acceptable if it doesn't degrade overall health.
+
+If a finding survives one fix attempt and is re-raised in a fresh-context review, the loop's deadlock detection will surface it — see `claude-pr-loop` and `codex-pr-loop`.
+
+## Common rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "It works, that's good enough" | Working but unreadable / insecure / architecturally wrong code creates compounding debt. |
+| "I wrote it, so I know it's correct" | Authors are blind to their own assumptions. |
+| "We'll clean it up later" | Later rarely comes. The review is the gate. |
+| "AI-generated code is probably fine" | AI code needs more scrutiny, not less — confident and plausible even when wrong. |
+| "The tests pass, so it's good" | Tests are necessary but not sufficient. They don't catch architecture or security issues. |
+| "It's a small change, light review is fine" | Small changes can carry critical bugs. The five (well, ten) axes still apply. |
+
+## Red flags in your own review
+
+- You wrote "LGTM" without evidence of having walked the diff.
+- All findings are nits; no axis was actually exercised.
+- Security-sensitive change reviewed without a security pass.
+- Large change ("too big to review properly") accepted as-is — split it instead.
+- A bug-fix PR with no regression test, accepted without flagging.
+- Missing severity labels — author can't tell what's required vs optional.
+
+## Verification
+
+After producing the review:
+
+- All findings have a `path:line` reference.
+- Verdict matches the severity counts (`merge-ready` only when `critical=0` and `important=0`).
+- Summary is 1–3 sentences and reflects the findings.
+- No section is left as "none" — omit empty sections instead.
