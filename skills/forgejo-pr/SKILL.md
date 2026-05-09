@@ -111,6 +111,8 @@ The helper reads its curl config from a temp file, so stdin is free for `--data 
 
 Prefer `--data @-` even for single-line bodies when the JSON contains shell metacharacters — `(`, `)`, `$`, backticks, or unescaped single quotes inside a `--data '<json>'` invocation will be parsed by bash before the helper ever runs (e.g. a PR body referencing `(PR 1)` triggers `syntax error near unexpected token '('`). The heredoc form sidesteps the parser entirely.
 
+Do **not** wrap the heredoc in command substitution — `--data "$(cat <<'JSON' ... JSON)"` looks similar but is structurally different: the heredoc is captured into a string that bash then parses as a `--data` argument, so any `(`, `$`, or backtick in the body still hits the parser. With `--data @-`, the heredoc is piped to the helper's stdin and bash never sees the body as a shell argument.
+
 Check whether a PR is already merged:
 
 ```sh
