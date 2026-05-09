@@ -11,7 +11,7 @@ Shared agent skills intended to be reusable across tools like Codex and Claude C
 
 ## Skills
 
-- `code-review`
+- `multi-axis-review`
 - `forgejo-pr`
 - `handoff`
 - `session-historian`
@@ -29,7 +29,7 @@ Example:
 ```bash
 git clone git@github.com:dismantl/agent-skills.git ~/.codex/agent-skills
 mkdir -p ~/.agents/skills
-ln -s ~/.codex/agent-skills/skills/code-review ~/.agents/skills/code-review
+ln -s ~/.codex/agent-skills/skills/multi-axis-review ~/.agents/skills/multi-axis-review
 ln -s ~/.codex/agent-skills/skills/forgejo-pr ~/.agents/skills/forgejo-pr
 ln -s ~/.codex/agent-skills/skills/handoff ~/.agents/skills/handoff
 ln -s ~/.codex/agent-skills/skills/session-historian ~/.agents/skills/session-historian
@@ -49,7 +49,7 @@ Example:
 git clone git@github.com:dismantl/agent-skills.git ~/.claude/agent-skills
 mkdir -p ~/.claude/skills
 ln -s ~/.claude/agent-skills/skills/claude-pr-loop ~/.claude/skills/claude-pr-loop
-ln -s ~/.claude/agent-skills/skills/code-review ~/.claude/skills/code-review
+ln -s ~/.claude/agent-skills/skills/multi-axis-review ~/.claude/skills/multi-axis-review
 ln -s ~/.claude/agent-skills/skills/forgejo-pr ~/.claude/skills/forgejo-pr
 ln -s ~/.claude/agent-skills/skills/handoff ~/.claude/skills/handoff
 ln -s ~/.claude/agent-skills/skills/session-historian ~/.claude/skills/session-historian

@@ -1,5 +1,5 @@
 ---
-name: code-review
+name: multi-axis-review
 description: "Use when reviewing a pull request, a diff, or a chunk of recently written code — phrases like \"review this PR\", \"review the diff\", \"code review this\", \"is this ready to merge\", or any request to assess code quality before it lands. Produces a structured, severity-rated review across correctness, readability, architecture, security, performance, tests, comments, and error handling. Tool-agnostic: works in Codex, Claude Code, or any agent that can read a diff."
 ---
 
