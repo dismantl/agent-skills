@@ -1,6 +1,6 @@
 ---
 name: multi-axis-review
-description: "Use when reviewing a pull request, a diff, or a chunk of recently written code — phrases like \"review this PR\", \"review the diff\", \"code review this\", \"is this ready to merge\", or any request to assess code quality before it lands. Produces a structured, severity-rated review across correctness, readability, architecture, security, performance, tests, comments, and error handling. Tool-agnostic: works in Codex, Claude Code, or any agent that can read a diff."
+description: "Use when reviewing a pull request, a diff, or a chunk of recently written code — phrases like \"review this PR\", \"review the diff\", \"code review this\", \"is this ready to merge\", or any request to assess code quality before it lands. Produces a structured, severity-rated review across correctness, readability, architecture, security, performance, tests, comments, error handling, and maintainability / tech-debt. Tool-agnostic: works in Codex, Claude Code, or any agent that can read a diff."
 ---
 
 # Code Review
@@ -135,7 +135,29 @@ No silent failures. Catch blocks that swallow errors are defects.
 - Useful: actually constrains the code that uses them, vs being a synonym for `any`.
 - Enforced: invariants checked at the boundary, not assumed.
 
-### 10. Change-level concerns
+### 10. Maintainability and future change cost
+
+What will this code cost the next engineer who has to change it? The lens here is *cost of the next edit*, not immediate comprehension (Readability) or system fit (Architecture).
+
+The framing matters because AI-assisted output without a maintainability check trades a one-time throughput win for compounding maintenance debt. If a change doubles the code you ship, it has to roughly halve the per-line cost of future change to come out ahead — otherwise the team is borrowing capacity from its future self. Flag patterns that look fine in isolation but multiply across edits.
+
+Look for:
+
+- **Change amplification**: one conceptual change requires edits across many unrelated places — the abstraction is missing or wrong.
+- **Implicit contracts**: behavior callers depend on that isn't expressed in types, tests, or comments. The next refactor will silently break it.
+- **Magic constants and environment assumptions**: hardcoded values, machine-specific paths, "works on my box" defaults buried in code.
+- **Copy-paste with drift potential**: near-duplicate code that will diverge as it gets edited. Some duplication is safer than premature DRY — flag the cases where divergence is the more likely failure mode.
+- **Reinvented stdlib / framework features**: handrolled date parsing, custom logger, ad-hoc retry loop where the language or framework already ships a well-tested one. Each handrolled wheel is permanent maintenance.
+- **Hidden coupling**: modules that talk through global state, ambient context, or "just happen to be called in the right order." The next person won't know not to rearrange them.
+- **Discoverability gaps**: code in unexpected locations, names that don't match what the code does, undocumented entry points. A maintainer who can't find the code can't safely change it.
+- **Brittle tests**: tests that break on unrelated refactors, mock internals, or re-implement the system-under-test. These actively raise the cost of every future change.
+- **TODOs without an owner or follow-up**: deferred work that quietly becomes permanent. Either link to an issue or do the work.
+- **AI-generated boilerplate without provenance**: large blocks of plausible-looking code where it's unclear which lines are load-bearing vs filler. If the author can't say what each section does, the next maintainer won't either.
+- **Vendored or pinned-old dependencies**: outdated libraries embedded for short-term convenience that someone will inherit upgrading.
+
+The question to ask on every flag: "Six months from now, when someone has to extend or fix this, what will slow them down?" If the answer is "nothing specific" don't flag it. If the answer is concrete — a name they'll misread, a contract they'll miss, a duplicate they'll forget to update — flag it.
+
+### 11. Change-level concerns
 
 - **Size**: ~100 LOC is good, ~300 LOC acceptable for a single logical change, ~1000 LOC is too large — flag for splitting unless it's an automated refactor or wholesale deletion.
 - **Scope**: one logical change per change. Refactors mixed with feature work should be split.
@@ -157,11 +179,12 @@ Decide which axes apply *before* reviewing. Skipping inapplicable axes is the po
 | Comments | conditional | no comments or docstrings added, modified, or made stale by code changes |
 | **Error handling** | conditional | no `try`/`catch`/`except`/error-return paths added or changed |
 | Type design | conditional | no types, structs, classes, interfaces, or schemas added or modified |
+| Maintainability | usually | diff is docs-only, generated-file regeneration, or a pure mechanical rename with no semantic changes |
 | Change-level | yes | — |
 
 "Conditional" axes are the ones the toolkit-style review treats as opt-in specialists. The single-mind reviewer follows the same rule: if the diff doesn't touch the axis surface area, don't review it. Don't manufacture findings to justify having checked.
 
-A docs-only PR typically runs Correctness (does the doc match the code?), Readability, Comments, and Change-level — and skips the rest. A pure dependency-version bump runs Correctness, Security (CVE check on the new version), and Change-level. A test-only PR runs Correctness, Readability, Tests (is the new test useful and well-named?), and Change-level.
+A docs-only PR typically runs Correctness (does the doc match the code?), Readability, Comments, and Change-level — and skips the rest. A pure dependency-version bump runs Correctness, Security (CVE check on the new version), Maintainability (is the upgrade path worse than the version we're on?), and Change-level. A test-only PR runs Correctness, Readability, Tests (is the new test useful and well-named?), Maintainability (will this test be brittle?), and Change-level.
 
 When you skip an axis, **don't list it as a finding-free section** — just don't mention it. The Output Contract's empty-section rule already handles this.
 
@@ -260,6 +283,7 @@ Specialists that map cleanly:
 | Errors | Silent failures, swallowed catches, missing context propagation |
 | Comments | Comment rot, accuracy vs code, documentation completeness |
 | Types | Encapsulation, invariant expression, enforcement |
+| Maintainability | Change amplification, hidden coupling, reinvented stdlib, brittle tests, AI-boilerplate provenance |
 | Code (general) | Project-convention compliance per `CLAUDE.md`, miscellaneous quality |
 
 The aggregated output must still satisfy the [Output Contract](#output-contract). Don't surface raw per-specialist sub-reports as the final message — the loop and downstream tools expect the canonical format.
@@ -294,7 +318,8 @@ If a finding survives one fix attempt and is re-raised in a fresh-context review
 | "We'll clean it up later" | Later rarely comes. The review is the gate. |
 | "AI-generated code is probably fine" | AI code needs more scrutiny, not less — confident and plausible even when wrong. |
 | "The tests pass, so it's good" | Tests are necessary but not sufficient. They don't catch architecture or security issues. |
-| "It's a small change, light review is fine" | Small changes can carry critical bugs. The five (well, ten) axes still apply. |
+| "It's a small change, light review is fine" | Small changes can carry critical bugs. The axes still apply. |
+| "We're moving fast with AI, we'll pay down the debt later" | Throughput without a maintainability check is a loan against future capacity. The review *is* when you decide whether the loan is worth taking. |
 
 ## Red flags in your own review
 
