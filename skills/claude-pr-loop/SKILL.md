@@ -161,9 +161,20 @@ Disagreed:
 Never start the next review round until CI is green on the latest commit.
 
 - GitHub: `gh pr checks <pr> --watch` (foreground) or `gh pr checks <pr>` polled via the `Monitor` tool with an `until` loop.
-- Forgejo: poll `claude-forgejo-api GET /repos/<owner>/<name>/commits/<sha>/status` (or raw `curl` against the same endpoint) until the combined `state` is `success`. The `Monitor` tool's `until <check>` loop is the right shape — you get a notification when the check passes.
+- Forgejo: poll `claude-forgejo-api GET /repos/<owner>/<name>/commits/<sha>/status` until the combined `state` is `success`. The `Monitor` tool's `until <check>` loop is the right shape — you get a notification when the check passes. **The `<sha>` here is a footgun — read the next subsection before polling.**
 
 If CI fails, read the failure, fix it, recommit, wait for green, then proceed to the next review round. CI-fix commits don't count against `max_iterations`.
+
+### Forgejo: get the head SHA from the API, never type it
+
+Fetch the head SHA from `pulls/<N>.head.sha` **fresh, immediately before polling**. Do not paste a SHA from `git push` output, do not copy one from a previous round, and never autoregressively complete a short prefix into a full 40-char SHA — the LLM does not have the missing 33 chars in context, and any "completion" is a hallucination.
+
+```
+head_sha=$(claude-forgejo-api GET /repos/<owner>/<name>/pulls/<N> | jq -r .head.sha)
+claude-forgejo-api GET /repos/<owner>/<name>/commits/$head_sha/status
+```
+
+Why this matters: Forgejo's `/commits/<sha>/status` endpoint returns the same empty/pending-shaped response for a nonexistent SHA as for "checks haven't started yet." A hallucinated SHA therefore either hangs the wait loop forever or false-positives as merge-ready — both invisible from the response shape alone. Always source the SHA from the forge, never from the agent's own text.
 
 ## Stop conditions
 
