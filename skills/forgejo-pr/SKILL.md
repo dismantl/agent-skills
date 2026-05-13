@@ -54,6 +54,10 @@ api=forgejo-api
 
 Use exactly one of those assignments. Do not infer identity from which wrappers exist, because both may be installed.
 
+## Bodies are JSON, never multipart
+
+Forgejo's API expects JSON request bodies. The wrapper rejects `-F` / `--form` / `--form-string` up front (HTTP 422 across the board); pass the body via `--data '<json>'` or `--data @-` with a heredoc (see "Common Operations" below). The wrapper sets `Content-Type: application/json` for you, so you don't need `-H 'Content-Type: ...'` either. Reach for curl's multipart form-data flags on instinct and you'll round-trip through the wrapper's error message before getting back here.
+
 ## Common Operations
 
 List open PRs:
