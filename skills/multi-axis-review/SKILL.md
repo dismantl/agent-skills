@@ -200,7 +200,22 @@ Use these three at the verdict level — the output contract depends on them and
 | **important** | Should fix before merge. Real defect, architectural problem, missing test for new logic, silent failure. |
 | **minor** | Nice to fix; safe to defer. Style, clarity nit, optional refactor, low-impact perf, FYI. |
 
-Inline comments addressed to the author may use finer-grained prefixes (`Nit:`, `Optional:`, `Consider:`, `FYI`) so authors know what's required vs optional, but the **counts in the output contract use only `critical / important / minor`**.
+### Disposition tags (required on `minor` findings)
+
+`minor` is a wide bucket — a one-line style nit and a "real but defer-to-followup" issue both land there. Every minor finding must carry exactly one disposition tag so the author can triage at a glance:
+
+| Tag | Meaning |
+|---|---|
+| `nit:` | Style or clarity, no behavior impact. Drive-by fix or skip. |
+| `consider:` | Design judgment call. Author should weigh; not a defect. |
+| `defer:` | Real but small. File a follow-up issue, don't block merge. |
+| `fyi:` | Informational only. No action expected. |
+
+Tags appear inline in the finding text, e.g. `foo.go:42 — nit: variable name 'data' is non-descriptive`.
+
+The **counts in the output contract still use only `critical / important / minor`** — downstream loops (`claude-pr-loop`, `codex-pr-loop`) parse those tokens. Dispositions are for human triage, not machine parsing.
+
+`critical` and `important` findings do not take dispositions — those are by definition "fix before merge" and the disposition would be redundant.
 
 ## What you do NOT flag
 
@@ -243,7 +258,7 @@ Important findings:
 - ...
 
 Minor findings:
-- <path/to/file>:<line> — <one-line description>
+- <path/to/file>:<line> — <disposition>: <one-line description>
 - ...
 
 Summary:
@@ -257,11 +272,13 @@ Rules:
 - `Verdict: needs-work` is the default when at least one critical or important finding exists.
 - `Verdict: blocked` means the review couldn't be completed (diff unreadable, repo guidance missing, ambiguous intent that needs a human). Use sparingly.
 - File:line references are required for every finding. If a finding spans a region, use the start line.
+- Every `minor` finding must carry exactly one disposition tag (`nit:`, `consider:`, `defer:`, `fyi:`) immediately after the em-dash. See [Disposition tags](#disposition-tags-required-on-minor-findings).
 - The summary is human-facing and short. Detail goes in the per-finding lines.
 
 For each finding, when posting an inline review comment to the PR (this skill doesn't post; the caller does), include:
 
 - **Severity**: critical / important / minor
+- **Disposition** (minor only): nit / consider / defer / fyi
 - **Category**: e.g. SQL injection, missing test, dead code, N+1 query
 - **What**: the issue in plain language
 - **Why it matters**: the consequence (exploit scenario for security, performance impact with numbers, regression risk for tests)
@@ -335,6 +352,7 @@ If a finding survives one fix attempt and is re-raised in a fresh-context review
 After producing the review:
 
 - All findings have a `path:line` reference.
+- Every `minor` finding carries exactly one disposition tag (`nit:`, `consider:`, `defer:`, `fyi:`).
 - Verdict matches the severity counts (`merge-ready` only when `critical=0` and `important=0`).
 - Summary is 1–3 sentences and reflects the findings.
 - No section is left as "none" — omit empty sections instead.

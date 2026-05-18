@@ -123,7 +123,7 @@ If the reviewer returns something unparseable, re-spawn once with an explicit re
 The toolkit suggests fixes; the parent decides which to apply. Default behavior:
 
 - **Critical and important findings**: apply unless you can articulate why the reviewer is wrong. If you disagree, push back in the next round's commit message rather than silently dropping the fix.
-- **Minor findings**: evaluate case by case. Fix if cheap and on-topic; defer otherwise. Track deferred minors across rounds — they go in the final report.
+- **Minor findings**: triage by the reviewer's disposition tag (`nit:` / `consider:` / `defer:` / `fyi:`). Fix `nit:` if cheap and on-topic. Weigh `consider:` and apply if you agree. Skip `defer:` and `fyi:` for this PR; add `defer:` items to the deferred-minors list that goes in the final report.
 - **Out-of-scope findings** (pre-existing issues unrelated to the diff): note and skip; they belong in a follow-up issue.
 
 Document what was and wasn't applied in the commit message.
