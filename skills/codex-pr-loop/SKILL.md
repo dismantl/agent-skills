@@ -127,10 +127,10 @@ iteration = 0
 while iteration < max_iterations:
   iteration += 1
   spawn a fresh review agent to review latest PR diff
-  if verdict is merge-ready and critical == 0 and important == 0:
+  if verdict is merge-ready and critical == 0 and important == 0 and no actionable minor findings remain:
     stop
   apply accepted critical and important fixes
-  evaluate minor findings; fix cheap/on-topic ones, defer the rest
+  resolve actionable minor findings; defer only with a concrete reason
   run local tests and lint that match the repo
   commit with a Conventional Commit message
   push
@@ -142,6 +142,9 @@ Never start the next review round until CI is green on the latest pushed commit.
 ## Applying Fixes
 
 - Apply critical and important findings unless you can clearly explain why the review is wrong.
+- Resolve all in-scope minor findings before declaring merge-ready. Minor severity means "not a merge blocker by itself," not "safe to ignore."
+- Treat these minor findings as in-scope by default: stale docs, misleading runbooks, future-agent guidance drift, test/contract drift, confusing comments near changed behavior, and small maintainability issues directly related to the PR.
+- Defer a minor finding only when it is unrelated to the PR, clearly pre-existing, cosmetic-only, high-risk relative to the PR, requires a broader refactor, or needs a user decision. Document every deferral with the reason.
 - Keep fixes scoped to the PR.
 - Skip unrelated pre-existing issues and mention them in the final report.
 - Do not push, merge, or close a PR without user permission when the repo is not clearly owned/controlled by the user.
@@ -179,7 +182,7 @@ If CI fails, read enough logs or status details to identify the root cause, fix 
 
 Stop when any of these happen:
 
-- Merge-ready verdict with zero critical and zero important findings.
+- Merge-ready verdict with zero critical, zero important, and zero actionable minor findings. Any remaining minor findings must be explicitly deferred under the policy above.
 - `max_iterations` is reached.
 - The same critical or important finding survives two consecutive rounds after an attempted fix.
 - CI fails twice for the same root cause.
@@ -195,8 +198,8 @@ PR <N>: <title>
 URL: <url>
 Status: merge-ready | stopped at iteration cap | stopped on deadlock | blocked | user-interrupted
 Rounds run: <N>
-Final severity: critical=<N> important=<N> minor=<N>
-Outstanding minor findings:
+Final severity: critical=<N> important=<N> actionable_minor=<N> deferred_minor=<N>
+Outstanding deferred minor findings:
 - <finding> (<file>): <why not fixed>
 Next step: <merge offered | manual review needed | user decision required>
 ```
