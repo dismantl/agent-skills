@@ -5,7 +5,7 @@ description: Use when the user wants to drive an open PR to merge-ready by itera
 
 # Claude PR Loop
 
-Drive an open PR to merge-ready by alternating fresh-context reviews with stateful fixes, repeating until the reviewer says it's clean.
+Drive an open PR to merge-ready by alternating fresh-context reviews with stateful fixes, using one authoritative full verification gate per round, and repeating until the reviewer says it's clean.
 
 ## When to use
 
@@ -15,7 +15,7 @@ Use this when one review pass isn't enough — when the user wants the PR worked
 
 The loop runs across two contexts. Each tier has a distinct role; do not blur them.
 
-- **Parent (this session).** Owns the loop. Detects the forge, spawns a fresh review subagent each round, applies findings, runs local checks, commits, pushes, and waits for CI between rounds. State accumulates here — what was fixed, what was deferred, what previous rounds flagged — which informs cross-round decisions like deadlock detection and judging "the same finding came back, did we actually fix it or not."
+- **Parent (this session).** Owns the loop. Detects the forge, spawns a fresh review subagent each round, applies findings, chooses the verification mode, commits, pushes as needed, and waits for the selected full gate between rounds. State accumulates here — what was fixed, what was deferred, what previous rounds flagged — which informs cross-round decisions like deadlock detection and judging "the same finding came back, did we actually fix it or not."
 - **Review subagent (fresh per round).** Invokes the `multi-axis-review` skill against the latest PR diff, posts the synthesized review as a PR comment, returns findings in the skill's structured output format. Each round is a brand-new context.
 
 The reviewer must stay fresh because the review's value comes from a reviewer that hasn't seen prior fix attempts and won't rationalize them. A continued context drifts toward agreement with the work it just observed. The parent's continuous context is what makes the *loop* work — accumulated state is what powers deadlock detection and lets the parent push back on a finding the reviewer keeps re-raising.
@@ -56,6 +56,7 @@ Don't attempt the old "spawn a long-lived background driver subagent that runs u
 iteration = 0
 findings_history = []
 ci_failure_streak = 0
+verification_mode = choose_verification_mode()
 
 while iteration < max_iterations:
     iteration += 1
@@ -74,15 +75,17 @@ while iteration < max_iterations:
     # 3. Apply fixes in the parent's own context
     apply_fixes(findings)
 
-    # 4. Local verification
-    run_local_tests_and_lint()
+    # 4. Verification
+    run_cheap_targeted_local_checks_when_useful()
+    if verification_mode in ("local", "hybrid"):
+        run_full_local_tests_and_lint()
 
     # 5. Commit + push
     commit_with_message_describing_round(iteration, findings)
     git_push()
 
-    # 6. Wait for CI to go green before the next round
-    if not wait_for_ci():
+    # 6. Wait for the authoritative gate before the next round
+    if verification_mode in ("ci", "hybrid") and not wait_for_ci():
         ci_failure_streak += 1
         if ci_failure_streak >= 2 and same_root_cause(...):
             break
@@ -129,7 +132,17 @@ The toolkit suggests fixes; the parent decides which to apply. Default behavior:
 
 Document what was and wasn't applied in the commit message.
 
-## Local checks before each push
+## Verification strategy
+
+Choose one authoritative full verification gate before the first fix round, then re-evaluate only if CI is unavailable or clearly untrustworthy.
+
+- **`ci`** - Default when PR CI exists, covers the same tests/lint as the local suite, and can be polled. Do not run the full local suite before push. Run only cheap targeted checks that catch obvious local mistakes, then push and wait for CI.
+- **`local`** - Use when CI is absent, unavailable, unpollable, or not trusted for the repo. Run the full local test/lint gate before push.
+- **`hybrid`** - Use only when the user asks for a no-red-commits workflow, repo policy requires it, or local and CI gates cover materially different risks. Run the full local gate before push and wait for CI after push.
+
+Do not run a full local suite and an equivalent full CI suite by default. That duplicates the same signal and slows the review loop without improving confidence.
+
+## Local checks
 
 Detect what the project uses rather than guessing:
 
@@ -139,7 +152,7 @@ Detect what the project uses rather than guessing:
 - Go: `go test ./...` and `go vet ./...`.
 - Otherwise mirror what `Makefile`, `.forgejo/workflows/`, or `.github/workflows/` runs.
 
-A red local test halts the round — fix the test before pushing, don't ship a known-broken commit.
+In `local` and `hybrid` modes, a red local test halts the round; fix it before pushing. In `ci` mode, local checks should stay cheap and targeted. If a targeted local check fails, fix it before pushing.
 
 ## Commit message format
 
@@ -159,12 +172,12 @@ Disagreed:
 
 ## CI gating
 
-Never start the next review round until CI is green on the latest commit.
+Never start the next review round until the selected full verification gate has passed for the latest commit. For `ci` and `hybrid` modes, that means CI is green on the latest pushed commit.
 
 - GitHub: `gh pr checks <pr> --watch` (foreground) or `gh pr checks <pr>` polled via the `Monitor` tool with an `until` loop.
 - Forgejo: poll `claude-forgejo-api GET /repos/<owner>/<name>/commits/<sha>/status` until the combined `state` is `success`. The `Monitor` tool's `until <check>` loop is the right shape — you get a notification when the check passes. **The `<sha>` here is a footgun — read the next subsection before polling.**
 
-If CI fails, read the failure, fix it, recommit, wait for green, then proceed to the next review round. CI-fix commits don't count against `max_iterations`.
+If CI fails, read the failure, reproduce locally when useful, fix it, recommit, wait for green, then proceed to the next review round. CI-fix commits don't count against `max_iterations`.
 
 ### Forgejo: get the head SHA from the API, never type it
 
