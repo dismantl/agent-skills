@@ -66,7 +66,7 @@ while iteration < max_iterations:
     findings_history.append(findings)
 
     # 2. Stop conditions (check before doing any work)
-    if findings.verdict == "merge-ready" and findings.critical == 0 and findings.important == 0:
+    if findings.verdict == "merge-ready" and findings.critical == 0 and findings.important == 0 and no_actionable_minors(findings):
         break
     if deadlock_detected(findings_history):
         # same critical/important finding survived two consecutive rounds despite a fix attempt
@@ -126,7 +126,8 @@ If the reviewer returns something unparseable, re-spawn once with an explicit re
 The toolkit suggests fixes; the parent decides which to apply. Default behavior:
 
 - **Critical and important findings**: apply unless you can articulate why the reviewer is wrong. If you disagree, push back in the next round's commit message rather than silently dropping the fix.
-- **Minor findings**: evaluate case by case. Fix if cheap and on-topic; defer otherwise. Track deferred minors across rounds — they go in the final report.
+- **Minor findings**: resolve all in-scope minor findings before declaring merge-ready. Minor severity means "not a merge blocker by itself," not "safe to ignore." Treat stale docs, misleading runbooks, future-agent guidance drift, test/contract drift, confusing comments near changed behavior, and small maintainability issues directly related to the PR as in-scope by default.
+- **Minor deferrals**: defer a minor only when it is unrelated to the PR, clearly pre-existing, cosmetic-only, high-risk relative to the PR, requires a broader refactor, or needs a user decision. The reviewer's disposition tag (`nit:` / `consider:` / `defer:` / `fyi:`) is input, not an automatic decision. Document every deferral with the reason.
 - **Out-of-scope findings** (pre-existing issues unrelated to the diff): note and skip; they belong in a follow-up issue.
 
 Document what was and wasn't applied in the commit message.
@@ -191,7 +192,7 @@ Why this matters: Forgejo's `/commits/<sha>/status` endpoint returns the same em
 
 ## Stop conditions
 
-- **Merge-ready** verdict with zero critical and zero important findings (minor findings allowed).
+- **Merge-ready** verdict with zero critical, zero important, and zero actionable minor findings. Any remaining minor findings must be explicitly deferred under the policy above.
 - **Iteration cap** reached (`max_iterations`).
 - **Reviewer-disagreement deadlock**: the same critical or important finding survives two consecutive rounds despite an attempted fix. Surface both interpretations in the final report and let the user adjudicate.
 - **Two consecutive CI failures** with the same root cause — treat as an environment problem and stop.
@@ -207,9 +208,9 @@ URL: <PR URL>
 
 Status: <merge-ready | stopped at iteration cap | stopped on deadlock | stopped on CI failures | branch moved>
 Rounds run: <N>
-Final severity: critical=<X> important=<Y> minor=<Z>
+Final severity: critical=<X> important=<Y> actionable_minor=<Z> deferred_minor=<N>
 
-Outstanding minor findings:
+Outstanding deferred minor findings:
 - <finding> (<file>): <why not fixed>
 
 Next step: <merge offered | manual review needed | user decision required>
