@@ -141,7 +141,7 @@ Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hi
 
 > Invoke the `multi-axis-review` skill against PR #`<N>` in `<owner/name>` on `<forge>` (`<forge-base-url>`).
 >
-> Pull the diff with `gh pr diff <N>` for GitHub, or the Forgejo/Gitea `pulls/<N>.diff` endpoint, plus PR metadata from `gh pr view <N>` or `pulls/<N>`. Read the repo's `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` if present so findings respect project conventions.
+> Pull the diff with `gh pr diff <N>` for GitHub, or the Forgejo/Gitea `pulls/<N>.diff` endpoint, plus PR metadata from `gh pr view <N>` or `pulls/<N>`. Read the repo's `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` / `README.md` if present so findings respect project conventions.
 >
 > Run the review across all applicable axes: Correctness, Readability, Architecture, Security, Performance, Tests, Comments, Error handling, Type design where relevant, Maintainability, and Change-level concerns.
 >
