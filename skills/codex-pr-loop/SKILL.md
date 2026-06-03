@@ -5,7 +5,7 @@ description: Use when the user wants Codex to drive an open PR to merge-ready by
 
 # Codex PR Loop
 
-Drive an open PR to merge-ready by alternating fresh-context reviews with stateful fixes, repeating until the reviewer says it is clean.
+Drive an open PR to merge-ready by alternating fresh-context reviews with stateful fixes, using one authoritative full verification gate per round, and repeating until the reviewer says it is clean.
 
 ## When to Use
 
@@ -23,7 +23,7 @@ This skill cannot override a higher-priority policy that directly forbids `spawn
 
 The loop runs across two contexts. Each tier has a distinct role; do not add a third tier.
 
-- **Parent session:** Owns the loop. It detects the forge, checks out the PR branch, spawns a fresh reviewer each round, applies accepted findings, runs verification, commits, pushes, waits for CI, detects deadlocks, and writes the final report. State accumulates here: what was fixed, what was deferred, what previous rounds flagged, and whether a repeated finding is a real deadlock.
+- **Parent session:** Owns the loop. It detects the forge, checks out the PR branch, spawns a fresh reviewer each round, applies accepted findings, chooses the verification mode, commits, pushes, waits for the selected full gate, detects deadlocks, and writes the final report. State accumulates here: what was fixed, what was deferred, what previous rounds flagged, and whether a repeated finding is a real deadlock.
 - **Fresh review sub-agent:** Invokes the `multi-axis-review` skill against the latest PR diff and repo instructions, then returns findings in the skill's structured output format. Each round is a brand-new context. It must not edit files, commit, push, merge, or run the loop.
 
 The reviewer must stay fresh because the review's value comes from a reviewer that has not seen prior fix attempts and will not rationalize them. The parent's continuous context is what makes the loop work: accumulated state powers deadlock detection and lets the parent push back on a finding the reviewer keeps re-raising.
@@ -176,6 +176,7 @@ Comment ownership must stay singular: in fresh-review mode, the reviewer posts t
 iteration = 0
 findings_history = []
 ci_failure_streak = 0
+verification_mode = choose_verification_mode()
 
 while iteration < max_iterations:
   iteration += 1
@@ -190,13 +191,16 @@ while iteration < max_iterations:
 
   apply accepted critical and important fixes
   resolve actionable minor findings; defer only with a concrete reason
-  run local tests and lint that match the repo
+  run cheap targeted local checks when they are available and useful
+  if verification_mode is local or hybrid:
+    run the full local test/lint gate before pushing
   commit with a Conventional Commit message
   push
-  wait for CI on the latest head SHA
+  if verification_mode is ci or hybrid:
+    wait for CI on the latest head SHA
 ```
 
-Never start the next review round until CI is green on the latest pushed commit.
+Never start the next review round until the selected full verification gate has passed for the latest commit. For `ci` and `hybrid` modes, that means CI is green on the latest pushed commit.
 
 ## Applying Fixes
 
@@ -223,7 +227,17 @@ Disagreed:
 - <finding> -- <reasoning>
 ```
 
-## Local Checks Before Each Push
+## Verification Strategy
+
+Choose one authoritative full verification gate before the first fix round, then re-evaluate only if CI is unavailable or clearly untrustworthy.
+
+- `ci` - Default when PR CI exists, covers the same tests/lint as the local suite, and can be polled. Do not run the full local suite before push. Run only cheap targeted checks that catch obvious local mistakes, then push and wait for CI.
+- `local` - Use when CI is absent, unavailable, unpollable, or not trusted for the repo. Run the full local test/lint gate before push.
+- `hybrid` - Use only when the user asks for a no-red-commits workflow, repo policy requires it, or local and CI gates cover materially different risks. Run the full local gate before push and wait for CI after push.
+
+Do not run a full local suite and an equivalent full CI suite by default. That duplicates the same signal and slows the review loop without improving confidence.
+
+## Local Checks
 
 Detect checks from repo files instead of guessing:
 
@@ -233,14 +247,14 @@ Detect checks from repo files instead of guessing:
 - Ansible: project test targets and `ansible-lint` where configured
 - Otherwise mirror `.github/workflows/`, `.forgejo/workflows/`, or `Makefile`
 
-A red local check halts the round. Fix the failure before pushing; do not ship a known-broken commit.
+In `local` and `hybrid` modes, failing local checks halt the round; fix them before pushing. In `ci` mode, local checks should stay cheap and targeted. If a targeted local check fails, fix it before pushing.
 
 ## CI Gating
 
 - GitHub: `gh pr checks <pr> --watch`.
 - Forgejo/Gitea: poll `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/status` until the combined status is `success`, `failure`, or `error`.
 
-If CI fails, read enough logs or status details to identify the root cause, fix it, commit, push, and wait again. CI-fix commits do not count against `max_iterations`.
+If CI fails, read enough logs or status details to identify the root cause, reproduce locally when useful, fix it, commit, push, and wait again. CI-fix commits do not count against `max_iterations`.
 
 ### Forgejo/Gitea: Get the Head SHA from the API
 
