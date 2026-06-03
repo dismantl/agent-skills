@@ -289,7 +289,9 @@ A clean report is a good report. If nothing is wrong, return `Verdict: merge-rea
 
 ## Optional fan-out (subagent-capable runtimes)
 
-If the runtime exposes subagent tools to the reviewer and active policy permits using them, the reviewer may dispatch per-axis specialists in parallel and aggregate, instead of reviewing single-mind. Examples include Claude Code's `Agent` tool and Codex's `spawn_agent` tool when available in the current context. **Use [Axis applicability](#axis-applicability) to decide which specialists to dispatch** — don't fan out to all of them on every PR. A docs-only PR doesn't need a security or types specialist; dispatching them anyway costs time and tokens for guaranteed-empty reports.
+If the runtime exposes subagent tools to the reviewer, active policy permits using them, and the caller has not forbidden an extra context tier, the reviewer may dispatch per-axis specialists in parallel and aggregate, instead of reviewing single-mind. Examples include Claude Code's `Agent` tool and Codex's `spawn_agent` tool when available in the current context. **Use [Axis applicability](#axis-applicability) to decide which specialists to dispatch** — don't fan out to all of them on every PR. A docs-only PR doesn't need a security or types specialist; dispatching them anyway costs time and tokens for guaranteed-empty reports.
+
+If a caller requires a two-context review loop, such as `codex-pr-loop`, do not use this optional fan-out. Review single-mind inside the fresh reviewer so the caller's architecture remains intact.
 
 Specialists that map cleanly:
 

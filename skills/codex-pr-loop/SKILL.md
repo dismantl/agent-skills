@@ -141,6 +141,8 @@ Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hi
 
 > Invoke the `multi-axis-review` skill against PR #`<N>` in `<owner/name>` on `<forge>` (`<forge-base-url>`).
 >
+> This is a `codex-pr-loop` review round. Do not spawn nested agents or use `multi-axis-review`'s optional fan-out; this loop must stay at two contexts.
+>
 > Pull the diff with `gh pr diff <N>` for GitHub, or the Forgejo/Gitea `pulls/<N>.diff` endpoint, plus PR metadata from `gh pr view <N>` or `pulls/<N>`. Read the repo's `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` / `README.md` if present so findings respect project conventions.
 >
 > Run the review across all applicable axes: Correctness, Readability, Architecture, Security, Performance, Tests, Comments, Error handling, Type design where relevant, Maintainability, and Change-level concerns.
@@ -164,9 +166,9 @@ The reviewer must inspect the latest PR diff and repo instructions, then return 
 
 If fresh review agents are unavailable, stop and report that fresh-context review is unavailable instead of silently reviewing from accumulated loop context.
 
-In foreground fallback mode, perform the review yourself by invoking the `multi-axis-review` skill against the latest PR diff. Same axes, same Output Contract — the only difference is that the parent's context is no longer fresh, so deadlock detection across rounds becomes harder.
+In foreground fallback mode, perform the review yourself by invoking the `multi-axis-review` skill against the latest PR diff, then post the synthesized review summary to the PR when auth is available. Same axes, same Output Contract — the only difference is that the parent's context is no longer fresh, so deadlock detection across rounds becomes harder.
 
-When auth is available, post the synthesized review summary to the PR each round. On GitHub, use `gh pr comment`. On Forgejo/Gitea, use the issue-comment API above.
+Comment ownership must stay singular: in fresh-review mode, the reviewer posts the PR comment and the parent only confirms it happened; in foreground fallback mode, the parent posts the PR comment.
 
 ## Loop
 
