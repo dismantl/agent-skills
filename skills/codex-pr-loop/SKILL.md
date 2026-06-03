@@ -148,7 +148,13 @@ Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hi
 > Auth pattern: `<auth pattern>`. After producing the review, post it as a PR comment when auth is available:
 >
 > - GitHub: `gh pr comment <N> --body-file -` (read body from stdin)
-> - Forgejo/Gitea: `codex-forgejo-api POST /repos/<owner>/<name>/issues/<N>/comments --data '{"body":"<markdown review summary>"}'` if available; otherwise use `forgejo-api` or the repo-documented helper. PRs and issues share the comments endpoint on Forgejo/Gitea.
+> - Forgejo/Gitea: `codex-forgejo-api POST /repos/<owner>/<name>/issues/<N>/comments --data @-` if available; otherwise use `forgejo-api` or the repo-documented helper. Pass JSON on stdin, for example:
+>
+>   ```json
+>   {"body":"<markdown review summary>"}
+>   ```
+>
+>   PRs and issues share the comments endpoint on Forgejo/Gitea.
 >
 > After the comment is posted, return as your final message the **`multi-axis-review` skill's Output Contract** verbatim: `Verdict:` line, `Severity:` line, severity-grouped findings sections (omit empty sections), and a 1-3 sentence `Summary:`. No extra prose, no preamble.
 
