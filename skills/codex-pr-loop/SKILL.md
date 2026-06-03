@@ -1,11 +1,15 @@
 ---
 name: codex-pr-loop
-description: Use when the user wants Codex to keep working an open PR until it is merge-ready; triggers on requests like "loop on this PR", "review and fix until clean", "babysit PR #N", "keep reviewing this PR", or "get this PR to green".
+description: Use when the user wants Codex to drive an open PR to merge-ready by iterating on it; triggers on requests like "loop on this PR", "review and fix until clean", "babysit PR #N", "keep reviewing this PR", "run the review loop on this", or "get this PR to green".
 ---
 
 # Codex PR Loop
 
-Drive an open PR toward merge-ready by repeating: review the latest diff, apply fixes, verify locally, commit, push, wait for CI, and review again.
+Drive an open PR to merge-ready by alternating fresh-context reviews with stateful fixes, repeating until the reviewer says it is clean.
+
+## When to Use
+
+Use this when one review pass is not enough: the user wants the PR worked all the way to merge-ready and is willing to let several iterations run. Invoke the `multi-axis-review` skill directly without this loop if the user only wants one round of feedback.
 
 ## Delegation Contract
 
@@ -17,10 +21,12 @@ This skill cannot override a higher-priority policy that directly forbids `spawn
 
 ## Architecture
 
-The loop runs across two contexts. Do not add a third tier.
+The loop runs across two contexts. Each tier has a distinct role; do not add a third tier.
 
-- **Parent session:** Owns the loop. It checks out the PR branch, spawns a fresh reviewer each round, applies accepted findings, runs verification, commits, pushes, waits for CI, detects deadlocks, and writes the final report.
-- **Fresh review sub-agent:** Reviews the latest PR diff and repo instructions, then returns findings only. It must not edit files, commit, push, merge, or run the loop.
+- **Parent session:** Owns the loop. It detects the forge, checks out the PR branch, spawns a fresh reviewer each round, applies accepted findings, runs verification, commits, pushes, waits for CI, detects deadlocks, and writes the final report. State accumulates here: what was fixed, what was deferred, what previous rounds flagged, and whether a repeated finding is a real deadlock.
+- **Fresh review sub-agent:** Invokes the `multi-axis-review` skill against the latest PR diff and repo instructions, then returns findings in the skill's structured output format. Each round is a brand-new context. It must not edit files, commit, push, merge, or run the loop.
+
+The reviewer must stay fresh because the review's value comes from a reviewer that has not seen prior fix attempts and will not rationalize them. The parent's continuous context is what makes the loop work: accumulated state powers deadlock detection and lets the parent push back on a finding the reviewer keeps re-raising.
 
 Do not spawn a long-lived driver agent to own the loop. In Codex, spawned agents cannot be assumed to have `spawn_agent` available, so a driver agent cannot reliably create fresh reviewer agents. The parent must chain reviewer agents from the main session to preserve fresh context.
 
@@ -32,6 +38,17 @@ Codex has two valid modes. Choose based on the user's wording and the active too
 - **Foreground review (fallback):** The parent session reviews the PR itself. Use this only when fresh review sub-agents are unavailable, directly blocked by the active tool policy even after the Delegation Contract above, or explicitly declined by the user.
 
 When fresh review sub-agents are not permitted, do not pretend the reviewer context is fresh. Say fresh-context review is unavailable and ask whether to continue in foreground mode.
+
+## Parent Occupation
+
+By default, each review sub-agent runs in the background after `spawn_agent` returns, so the parent stays interactive during the slowest part of each round. The parent only blocks while applying fixes, running local checks, pushing, and waiting when the next step depends on CI.
+
+If the user wants the loop fully backgrounded, explain that the parent session must remain the orchestrator so it can spawn a fresh reviewer each round. Acceptable alternatives are:
+
+- **Run one round at a time.** Invoke `multi-axis-review`, apply fixes, and pause between rounds. This loses the babysit-until-merge-ready property.
+- **Schedule only when fresh reviewers are available.** A scheduled or heartbeat continuation can help with long CI waits, but it must still run the same parent-orchestrated loop and spawn a fresh reviewer per round.
+
+Do not spawn a long-lived background driver that runs unattended. It cannot fan out to a fresh reviewer per round, so it loses the central property the skill is built on.
 
 ## Inputs
 
@@ -45,7 +62,7 @@ Before starting the first review round:
 
 1. Confirm the worktree state with `git status --short`; do not overwrite unrelated user changes.
 2. Detect the repo remote with `git remote get-url origin`.
-3. Detect the forge:
+3. Detect the forge so the reviewer prompt names it explicitly:
    - `github.com` -> use `gh`.
    - anything else -> treat as Forgejo/Gitea and use the REST API directly.
 4. Determine the PR branch:
@@ -110,9 +127,34 @@ Summary:
 
 Empty severity sections are omitted (don't emit "Critical findings: none" — leave the section out and let the count speak).
 
-In the default mode, the parent spawns a fresh review agent per round with a self-contained prompt that tells it to invoke the `multi-axis-review` skill and return its Output Contract verbatim. Use `fork_context: false` so the reviewer does not inherit the parent's accumulated rationale. Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hints, relevant safety rules, and a reminder that the final message must follow the `multi-axis-review` skill's Output Contract. Do not include previous round findings unless the explicit purpose is deadlock adjudication.
+## Spawning Each Round's Reviewer
 
-The reviewer must inspect the latest PR diff and repo instructions, then return findings only. The parent applies fixes and posts the synthesized review summary to the PR.
+In the default mode, the parent spawns a fresh review agent per round with a self-contained prompt. Use `spawn_agent` with:
+
+- `agent_type` omitted or `default`; the reviewer needs file reads, forge/HTTP access, and the ability to invoke the `multi-axis-review` skill.
+- `fork_context: false` so the reviewer does not inherit the parent's accumulated rationale.
+- No isolated write workspace; the reviewer is read-only and must not edit files.
+
+Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hints, relevant safety rules, and a reminder that the final message must follow the `multi-axis-review` skill's Output Contract. Do not include previous round findings unless the explicit purpose is deadlock adjudication.
+
+### Reviewer Prompt Template
+
+> Invoke the `multi-axis-review` skill against PR #`<N>` in `<owner/name>` on `<forge>` (`<forge-base-url>`).
+>
+> Pull the diff with `gh pr diff <N>` for GitHub, or the Forgejo/Gitea `pulls/<N>.diff` endpoint, plus PR metadata from `gh pr view <N>` or `pulls/<N>`. Read the repo's `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` if present so findings respect project conventions.
+>
+> Run the review across all applicable axes: Correctness, Readability, Architecture, Security, Performance, Tests, Comments, Error handling, Type design where relevant, Maintainability, and Change-level concerns.
+>
+> Auth pattern: `<auth pattern>`. After producing the review, post it as a PR comment when auth is available:
+>
+> - GitHub: `gh pr comment <N> --body-file -` (read body from stdin)
+> - Forgejo/Gitea: `codex-forgejo-api POST /repos/<owner>/<name>/issues/<N>/comments --data '{"body":"<markdown review summary>"}'` if available; otherwise use `forgejo-api` or the repo-documented helper. PRs and issues share the comments endpoint on Forgejo/Gitea.
+>
+> After the comment is posted, return as your final message the **`multi-axis-review` skill's Output Contract** verbatim: `Verdict:` line, `Severity:` line, severity-grouped findings sections (omit empty sections), and a 1-3 sentence `Summary:`. No extra prose, no preamble.
+
+If the reviewer returns something unparseable, re-spawn once with an explicit reminder to follow the `multi-axis-review` skill's Output Contract. If it fails again, surface the reviewer's output verbatim and stop.
+
+The reviewer must inspect the latest PR diff and repo instructions, then return findings only. The parent applies fixes and confirms that the synthesized review summary was posted to the PR exactly once.
 
 If fresh review agents are unavailable, stop and report that fresh-context review is unavailable instead of silently reviewing from accumulated loop context.
 
@@ -124,17 +166,26 @@ When auth is available, post the synthesized review summary to the PR each round
 
 ```text
 iteration = 0
+findings_history = []
+ci_failure_streak = 0
+
 while iteration < max_iterations:
   iteration += 1
+
   spawn a fresh review agent to review latest PR diff
+  append findings to findings_history
+
   if verdict is merge-ready and critical == 0 and important == 0 and no actionable minor findings remain:
     stop
+  if the same critical/important finding survived two consecutive rounds despite a fix attempt:
+    stop
+
   apply accepted critical and important fixes
   resolve actionable minor findings; defer only with a concrete reason
   run local tests and lint that match the repo
   commit with a Conventional Commit message
   push
-  wait for CI on the pushed SHA
+  wait for CI on the latest head SHA
 ```
 
 Never start the next review round until CI is green on the latest pushed commit.
@@ -154,12 +205,17 @@ Commit message format:
 ```text
 fix(<scope>): address review round <N> findings
 
-- Applied <short fix summary>
-- Deferred <minor finding> because <reason>
-- Disagreed with <finding> because <reason>
+Applied:
+- <short fix summary>
+
+Deferred (minor):
+- <minor finding> -- <reason>
+
+Disagreed:
+- <finding> -- <reasoning>
 ```
 
-## Verification
+## Local Checks Before Each Push
 
 Detect checks from repo files instead of guessing:
 
@@ -169,7 +225,7 @@ Detect checks from repo files instead of guessing:
 - Ansible: project test targets and `ansible-lint` where configured
 - Otherwise mirror `.github/workflows/`, `.forgejo/workflows/`, or `Makefile`
 
-If local checks fail, fix them before pushing.
+A red local check halts the round. Fix the failure before pushing; do not ship a known-broken commit.
 
 ## CI Gating
 
@@ -177,6 +233,17 @@ If local checks fail, fix them before pushing.
 - Forgejo/Gitea: poll `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/status` until the combined status is `success`, `failure`, or `error`.
 
 If CI fails, read enough logs or status details to identify the root cause, fix it, commit, push, and wait again. CI-fix commits do not count against `max_iterations`.
+
+### Forgejo/Gitea: Get the Head SHA from the API
+
+Fetch the head SHA from `pulls/<N>.head.sha` fresh, immediately before polling. Do not paste a SHA from `git push` output, do not copy one from a previous round, and never complete a short prefix into a full 40-character SHA.
+
+```sh
+head_sha=$(codex-forgejo-api GET /repos/<owner>/<name>/pulls/<N> | jq -r .head.sha)
+codex-forgejo-api GET /repos/<owner>/<name>/commits/$head_sha/status
+```
+
+Why this matters: Forgejo/Gitea can return a pending-shaped response for a nonexistent SHA, which can make a wait loop hang or false-positive as merge-ready. Always source the SHA from the forge.
 
 ## Stop Conditions
 
@@ -196,10 +263,32 @@ Return a concise report:
 ```text
 PR <N>: <title>
 URL: <url>
-Status: merge-ready | stopped at iteration cap | stopped on deadlock | blocked | user-interrupted
+Status: merge-ready | stopped at iteration cap | stopped on deadlock | stopped on CI failures | branch moved | blocked | user-interrupted
 Rounds run: <N>
 Final severity: critical=<N> important=<N> actionable_minor=<N> deferred_minor=<N>
 Outstanding deferred minor findings:
 - <finding> (<file>): <why not fixed>
 Next step: <merge offered | manual review needed | user decision required>
 ```
+
+If the repo allows direct merge, auth permits it, and branch protections are satisfied, offer to merge. Otherwise tell the user what is blocking the merge.
+
+## Failure Modes
+
+| Failure mode | Symptom | Response |
+|---|---|---|
+| Reviewer-disagreement deadlock | Same critical/important finding appears in rounds N and N+1 after a fix attempt | Stop and report both interpretations so the user can adjudicate. |
+| Infinite-loop guard | About to start round `max_iterations + 1` | Stop and report progress; ask before continuing past the cap. |
+| CI never goes green | Status fails after each push | Stop after two consecutive CI failures with the same root cause; treat it as an environment problem. |
+| Reviewer returns unparseable output | Final message lacks verdict or severity counts | Re-spawn once with the return-format reminder; if it fails again, surface the raw output and stop. |
+| PR branch moved under parent | Branch SHA differs from what the parent last pushed | Pull, re-run local checks, and start the next round fresh when safe; otherwise stop for a user decision. |
+| User interrupts mid-loop | User sends a new message during review or CI wait | Finish any half-applied fix, then surface state and ask. |
+
+## Repo-Shape Detection
+
+The parent reads `.git/config` or `git remote get-url origin` to figure out which forge, then names it explicitly in the reviewer prompt:
+
+- Hostname matches `github.com` -> GitHub. Use `gh` for PR metadata, diff, checks, comments, and merge operations.
+- Any other hostname -> Forgejo/Gitea. Use the REST API directly. Prefer `codex-forgejo-api` when present; otherwise use `forgejo-api` or the repo-documented auth helper.
+
+The reviewer inherits this detection via the prompt. Tell it which forge and where to find the token; do not make it re-derive what the parent already knows.
