@@ -188,7 +188,7 @@ A docs-only PR typically runs Correctness (does the doc match the code?), Readab
 
 When you skip an axis, **don't list it as a finding-free section** — just don't mention it. The Output Contract's empty-section rule already handles this.
 
-In the [optional fan-out](#optional-fan-out-claude-code-only) path, the same applicability table determines which specialists to dispatch. Don't dispatch a security specialist for a docs-only PR.
+In the [optional fan-out](#optional-fan-out-subagent-capable-runtimes) path, the same applicability table determines which specialists to dispatch. Don't dispatch a security specialist for a docs-only PR.
 
 ## Severity vocabulary
 
@@ -287,9 +287,11 @@ For each finding, when posting an inline review comment to the PR (this skill do
 
 A clean report is a good report. If nothing is wrong, return `Verdict: merge-ready`, zero counts, and a one-sentence summary noting what you checked.
 
-## Optional fan-out (Claude Code only)
+## Optional fan-out (subagent-capable runtimes)
 
-If the runtime supports subagents (e.g. Claude Code's `Agent` tool), the reviewer may dispatch per-axis specialists in parallel and aggregate, instead of reviewing single-mind. **Use [Axis applicability](#axis-applicability) to decide which specialists to dispatch** — don't fan out to all of them on every PR. A docs-only PR doesn't need a security or types specialist; dispatching them anyway costs time and tokens for guaranteed-empty reports.
+If the runtime exposes subagent tools to the reviewer, active policy permits using them, and the caller has not forbidden an extra context tier, the reviewer may dispatch per-axis specialists in parallel and aggregate, instead of reviewing single-mind. Examples include Claude Code's `Agent` tool and Codex's `spawn_agent` tool when available in the current context. **Use [Axis applicability](#axis-applicability) to decide which specialists to dispatch** — don't fan out to all of them on every PR. A docs-only PR doesn't need a security or types specialist; dispatching them anyway costs time and tokens for guaranteed-empty reports.
+
+If a caller requires a two-context review loop, such as `codex-pr-loop`, do not use this optional fan-out. Review single-mind inside the fresh reviewer so the caller's architecture remains intact.
 
 Specialists that map cleanly:
 
@@ -305,7 +307,7 @@ Specialists that map cleanly:
 
 The aggregated output must still satisfy the [Output Contract](#output-contract). Don't surface raw per-specialist sub-reports as the final message — the loop and downstream tools expect the canonical format.
 
-In Codex (no subagents) or any environment where fan-out isn't available, review single-mind across all axes. Both produce equally valid output; fan-out is a speed optimization, not a correctness requirement.
+In any environment where fan-out is unavailable or not permitted, review single-mind across all axes. Both produce equally valid output; fan-out is a speed optimization, not a correctness requirement.
 
 ## Honesty
 
