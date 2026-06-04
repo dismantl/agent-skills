@@ -31,7 +31,7 @@ Inputs:
 - `repo` — `owner/name` (optional; defaults to the current repo's remote)
 - `max_iterations` — safety cap (optional; default 5)
 
-Sample call from a parent session: "loop the review on PR 215 of dismantl/acab-ansible, max 4 rounds."
+Sample call from a parent session: "loop the review on PR 215 of dismantl/agent-skills, max 4 rounds."
 
 ## Parent occupation
 
