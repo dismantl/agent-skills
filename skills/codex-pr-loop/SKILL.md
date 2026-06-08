@@ -64,10 +64,10 @@ Before starting the first review round:
 2. Detect the repo remote with `git remote get-url origin`.
 3. Detect the forge so the reviewer prompt names it explicitly:
    - `github.com` -> use `gh`.
-   - anything else -> treat as Forgejo/Gitea and use the REST API directly.
+   - anything else -> treat as Forgejo/Gitea and require Forgejo MCP tools.
 4. Determine the PR branch:
    - GitHub: `gh pr view <pr> --json headRefName,baseRefName,url,title`.
-   - Forgejo: `GET /api/v1/repos/{owner}/{repo}/pulls/{index}`.
+   - Forgejo/Gitea: use `mcp_forgejo_get_pull_request_by_index`.
 5. Check out the PR branch in a safe workspace. If already in the target repo, use a manual git worktree when isolation matters:
    - `git fetch origin`
    - `git worktree add ../<repo-slug>-pr-<N>-loop <head-ref>`
@@ -75,34 +75,23 @@ Before starting the first review round:
 
 If the user asks for the loop to be fully backgrounded, explain that the parent session must remain the orchestrator so it can spawn a fresh reviewer each round. A long-lived background driver loses the fresh-review guarantee.
 
-## Forgejo/Gitea API Rules
+## Forgejo/Gitea MCP Rules
 
-Do not use `tea` for this skill. Use the Forgejo/Gitea REST API directly.
+Do not use `tea`, API helper scripts, direct REST calls, or raw `curl` for this
+skill. Use Forgejo MCP tools only.
 
-Prefer the local `codex-forgejo-api` helper when it is present on `PATH`; otherwise use `forgejo-api`, which defaults to Codex identity. The helper reads the token from `gopass` and wraps `curl` without putting the token in the curl command arguments. Example:
+If `mcp_forgejo_*` tools are not exposed in the active session, stop and report
+that Forgejo MCP is unavailable. Do not continue the PR loop in a Forgejo/Gitea
+repo without MCP access.
 
-```sh
-codex-forgejo-api GET /repos/dismantl/agent-skills/pulls/1
-codex-forgejo-api POST /repos/dismantl/agent-skills/issues/1/comments --data '{"body":"review summary"}'
-```
+Useful tools:
 
-Discover the base URL from the git remote or local repo guidance. Prefer an existing token documented by the repo; otherwise ask the user for the auth pattern before posting comments, pushing, merging, or reading private CI details.
-
-Useful endpoints:
-
-- PR metadata: `GET /api/v1/repos/{owner}/{repo}/pulls/{index}`
-- PR issue comments: `GET /api/v1/repos/{owner}/{repo}/issues/{index}/comments`
-- Post a PR comment: `POST /api/v1/repos/{owner}/{repo}/issues/{index}/comments`
-- Commit status: `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/status`
-- Commit statuses: `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/statuses`
-
-Use `Authorization: token <token>` unless the local repo documents a different accepted auth scheme.
-
-Post review summaries with JSON:
-
-```json
-{"body":"<markdown review summary>"}
-```
+- PR metadata: `mcp_forgejo_get_pull_request_by_index`
+- PR diff: `mcp_forgejo_get_pull_request_diff`
+- PR files: `mcp_forgejo_list_pull_request_files`
+- PR issue comments: `mcp_forgejo_list_issue_comments`
+- Post a PR comment: `mcp_forgejo_create_issue_comment`
+- Workflow runs: `mcp_forgejo_list_workflow_runs`
 
 ## Review Round
 
@@ -131,11 +120,11 @@ Empty severity sections are omitted (don't emit "Critical findings: none" — le
 
 In the default mode, the parent spawns a fresh review agent per round with a self-contained prompt. Use `spawn_agent` with:
 
-- `agent_type` omitted or `default`; the reviewer needs file reads, forge/HTTP access, and the ability to invoke the `multi-axis-review` skill.
+- `agent_type` omitted or `default`; the reviewer needs file reads, forge MCP access, and the ability to invoke the `multi-axis-review` skill.
 - `fork_context: false` so the reviewer does not inherit the parent's accumulated rationale.
 - No isolated write workspace; the reviewer is read-only and must not edit files.
 
-Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hints, relevant safety rules, and a reminder that the final message must follow the `multi-axis-review` skill's Output Contract. Do not include previous round findings unless the explicit purpose is deadlock adjudication.
+Give the reviewer the repo path, PR number, branch, base/head refs, forge/MCP hints, relevant safety rules, and a reminder that the final message must follow the `multi-axis-review` skill's Output Contract. Do not include previous round findings unless the explicit purpose is deadlock adjudication.
 
 ### Reviewer Prompt Template
 
@@ -143,20 +132,14 @@ Give the reviewer the repo path, PR number, branch, base/head refs, forge/API hi
 >
 > This is a `codex-pr-loop` review round. Do not spawn nested agents or use `multi-axis-review`'s optional fan-out; this loop must stay at two contexts.
 >
-> Pull the diff with `gh pr diff <N>` for GitHub, or the Forgejo/Gitea `pulls/<N>.diff` endpoint, plus PR metadata from `gh pr view <N>` or `pulls/<N>`. Read the repo's `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` / `README.md` if present so findings respect project conventions.
+> Pull the diff with `gh pr diff <N>` for GitHub, or Forgejo/Gitea MCP diff tooling, plus PR metadata from `gh pr view <N>` or Forgejo/Gitea MCP PR metadata tooling. Read the repo's `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` / `README.md` if present so findings respect project conventions.
 >
 > Run the review across all applicable axes: Correctness, Readability, Architecture, Security, Performance, Tests, Comments, Error handling, Type design where relevant, Maintainability, and Change-level concerns.
 >
-> Auth pattern: `<auth pattern>`. After producing the review, post it as a PR comment when auth is available:
+> Auth pattern: `<auth pattern>`. After producing the review, post it as a PR comment when the required forge tool is available:
 >
 > - GitHub: `gh pr comment <N> --body-file -` (read body from stdin)
-> - Forgejo/Gitea: `codex-forgejo-api POST /repos/<owner>/<name>/issues/<N>/comments --data @-` if available; otherwise use `forgejo-api` or the repo-documented helper. Pass JSON on stdin, for example:
->
->   ```json
->   {"body":"<markdown review summary>"}
->   ```
->
->   PRs and issues share the comments endpoint on Forgejo/Gitea.
+> - Forgejo/Gitea: use `mcp_forgejo_create_issue_comment(owner="<owner>", repo="<name>", index=<N>, body="<review>")`. If the tool is not callable, return `Verdict: blocked` and report that Forgejo MCP is unavailable. PRs and issues share the comments namespace on Forgejo/Gitea.
 >
 > After the comment is posted, return as your final message the **`multi-axis-review` skill's Output Contract** verbatim: `Verdict:` line, `Severity:` line, severity-grouped findings sections (omit empty sections), and a 1-3 sentence `Summary:`. No extra prose, no preamble.
 
@@ -252,20 +235,21 @@ In `local` and `hybrid` modes, failing local checks halt the round; fix them bef
 ## CI Gating
 
 - GitHub: `gh pr checks <pr> --watch`.
-- Forgejo/Gitea: poll `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/status` until the combined status is `success`, `failure`, or `error`.
+- Forgejo/Gitea: use MCP workflow-run tooling for the head SHA when it is sufficient. If MCP cannot provide the required gate, choose `local` verification or stop as blocked; do not use API helpers or direct REST as a fallback.
 
 If CI fails, read enough logs or status details to identify the root cause, reproduce locally when useful, fix it, commit, push, and wait again. CI-fix commits do not count against `max_iterations`.
 
-### Forgejo/Gitea: Get the Head SHA from the API
+### Forgejo/Gitea: Get the Head SHA from MCP
 
-Fetch the head SHA from `pulls/<N>.head.sha` fresh, immediately before polling. Do not paste a SHA from `git push` output, do not copy one from a previous round, and never complete a short prefix into a full 40-character SHA.
+Fetch the head SHA from Forgejo MCP fresh, immediately before polling. Do not paste a SHA from `git push` output, do not copy one from a previous round, and never complete a short prefix into a full 40-character SHA.
 
-```sh
-head_sha=$(codex-forgejo-api GET /repos/<owner>/<name>/pulls/<N> | jq -r .head.sha)
-codex-forgejo-api GET /repos/<owner>/<name>/commits/$head_sha/status
+```text
+pr_response = mcp_forgejo_get_pull_request_by_index(owner="<owner>", repo="<name>", index=<N>)
+head_sha = pr_response.Result.head.sha
+runs_response = mcp_forgejo_list_workflow_runs(owner="<owner>", repo="<name>", head_sha=head_sha)
 ```
 
-Why this matters: Forgejo/Gitea can return a pending-shaped response for a nonexistent SHA, which can make a wait loop hang or false-positive as merge-ready. Always source the SHA from the forge.
+Why this matters: a hallucinated SHA can point checks at the wrong revision or an unavailable status shape. Always source the SHA from Forgejo MCP, never from the agent's own text.
 
 ## Stop Conditions
 
@@ -311,6 +295,6 @@ If the repo allows direct merge, auth permits it, and branch protections are sat
 The parent reads `.git/config` or `git remote get-url origin` to figure out which forge, then names it explicitly in the reviewer prompt:
 
 - Hostname matches `github.com` -> GitHub. Use `gh` for PR metadata, diff, checks, comments, and merge operations.
-- Any other hostname -> Forgejo/Gitea. Use the REST API directly. Prefer `codex-forgejo-api` when present; otherwise use `forgejo-api` or the repo-documented auth helper.
+- Any other hostname -> Forgejo/Gitea. Require exposed Forgejo MCP tools. If they are not callable, stop and report that Forgejo MCP is unavailable.
 
 The reviewer inherits this detection via the prompt. Tell it which forge and where to find the token; do not make it re-derive what the parent already knows.

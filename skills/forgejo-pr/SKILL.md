@@ -5,19 +5,14 @@ description: "Use when working with pull requests on a Forgejo or Gitea reposito
 
 # Forgejo / Gitea PRs
 
-Use the Forgejo MCP tools when they are exposed in the session. Tool names are
-usually surfaced as `mcp_forgejo_*`, backed by the local `forgejo-mcp` stdio
-server. The MCP launcher resolves the agent's token from `gopass`, so do not
-paste, print, or manually expand Forgejo tokens.
+Use the Forgejo MCP tools. Tool names are usually surfaced as
+`mcp_forgejo_*`, backed by the local `forgejo-mcp` stdio server. The MCP
+launcher resolves the agent's token, so do not paste, print, or manually expand
+Forgejo tokens.
 
-Use the API wrappers only when Forgejo MCP tools are not callable in the active
-session:
-
-- Codex fallback: `codex-forgejo-api`
-- Claude Code fallback: `claude-forgejo-api`
-- Generic fallback: `forgejo-api`
-
-Do not use `tea` for agent workflows unless the user explicitly asks for it.
+If Forgejo MCP tools are not callable in the active session, stop and tell the
+user that Forgejo MCP is unavailable. Do not use API helper scripts, direct
+REST calls, raw `curl`, or `tea` as a fallback.
 
 ## Pre-Flight
 
@@ -37,27 +32,11 @@ Examples:
 | `ssh://git@git.example.com:2222/alice/widgets.git` | `alice/widgets` |
 | `https://git.example.com/alice/widgets.git` | `alice/widgets` |
 
-3. If MCP tools are exposed, use them directly. A successful
+3. Confirm Forgejo MCP is available. A successful
    `mcp_forgejo_get_my_user_info` call is a good auth sentinel.
 
-4. If MCP tools are not exposed, choose exactly one API fallback helper:
-
-```sh
-# Codex
-api=codex-forgejo-api
-
-# Claude Code
-api=claude-forgejo-api
-
-# Unknown or wrapper unavailable
-api=forgejo-api
-```
-
-If the repo is not on the helper's default instance, set:
-
-```sh
-export FORGEJO_BASE_URL="https://git.example.com"
-```
+4. If MCP tools are not exposed or auth fails, stop and report the missing
+   Forgejo MCP capability. Do not continue with API helpers or direct HTTP.
 
 ## MCP Response Shape
 
@@ -119,7 +98,8 @@ runs = runs_response.Result
 ```
 
 The pinned MCP server does not expose Forgejo's combined commit-status endpoint.
-Use the API fallback for that endpoint when workflow runs are not enough.
+Use workflow runs when they are enough; otherwise report that the needed status
+signal is unavailable through MCP.
 
 Create a PR after pushing the branch:
 
@@ -171,95 +151,24 @@ git checkout <head-branch>
 For forked PRs, add/fetch the head repo remote from PR metadata instead of
 guessing.
 
-## API Fallback
-
-Use this section only when MCP tools are not available in the active session.
-The wrappers handle token lookup through `gopass` and keep tokens out of curl
-arguments.
-
-List open PRs:
-
-```sh
-$api GET /repos/<owner>/<repo>/pulls
-```
-
-View PR metadata:
-
-```sh
-$api GET /repos/<owner>/<repo>/pulls/<index>
-```
-
-Read thread comments:
-
-```sh
-$api GET /repos/<owner>/<repo>/issues/<index>/comments
-```
-
-Post a thread comment:
-
-```sh
-$api POST /repos/<owner>/<repo>/issues/<index>/comments \
-  --data '{"body":"review summary"}'
-```
-
-Check combined commit status:
-
-```sh
-$api GET /repos/<owner>/<repo>/commits/<sha>/status
-```
-
-Create a PR with a heredoc body:
-
-```sh
-$api POST /repos/<owner>/<repo>/pulls --data @- <<'JSON'
-{
-  "head": "feature-branch",
-  "base": "main",
-  "title": "feat: add thing",
-  "body": "## Summary\n- change one\n- change two\n\n## Test plan\n- [x] tests"
-}
-JSON
-```
-
-Merge a PR only after explicit user confirmation:
-
-```sh
-$api POST /repos/<owner>/<repo>/pulls/<index>/merge \
-  --data '{"Do":"merge"}'
-```
-
-Use a non-default merge mode only when the user or repo guidance specifies it.
-
-Close a PR without merging only after explicit user confirmation:
-
-```sh
-$api PATCH /repos/<owner>/<repo>/issues/<index> \
-  --data '{"state":"closed"}'
-```
-
-Forgejo expects JSON request bodies. The wrapper rejects `-F` / `--form` /
-`--form-string` because multipart form data returns HTTP 422 for these API
-calls. Prefer `--data @-` for multi-line or shell-metacharacter-heavy bodies;
-do not wrap the heredoc in command substitution.
-
 ## Safety Rules
 
-- Prefer MCP tools whenever they are exposed.
+- Use Forgejo MCP tools for Forgejo/Gitea PR operations.
+- Stop when Forgejo MCP tools are unavailable instead of switching transports.
 - Never print tokens or paste helper internals into PR comments.
 - Never merge, close, approve, reject, or delete branches without explicit user confirmation.
 - Prefer thread comments for synthesized agent reviews.
 - Keep responses scoped; unwrap `.Result` and summarize large payloads.
-- If an endpoint or tool returns 404, verify both the repo slug and whether PR numbers share the issue index on that instance.
+- If a tool returns 404, verify both the repo slug and whether PR numbers share the issue index on that instance.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| No `mcp_forgejo_*` tools are exposed | Client session was started before Forgejo MCP was configured, or the MCP server failed to launch | Restart the client and check its MCP server list. Use the API fallback only for the current session. |
+| No `mcp_forgejo_*` tools are exposed | Client session was started before Forgejo MCP was configured, or the MCP server failed to launch | Restart the client and check its MCP server list. Do not use API helpers as a fallback. |
 | `gopass is required` | `gopass` is not installed | Install gopass, initialize it with age, then add the agent token. |
-| `could not read Forgejo MCP token` or `could not read Forgejo token` | Missing token entry | Add `agents/codex/forgejo-api-token` or `agents/claude/forgejo-api-token`. |
+| `could not read Forgejo MCP token` | Missing token entry | Add the Forgejo MCP token secret expected by the MCP launcher. |
 | 401/403 | Token lacks access | Check token scopes and repo permissions. |
 | 404 | Wrong instance, owner, repo, or PR index | Re-check remote URL and PR metadata. |
 | 404 with `could not find '<branch>' to be a commit, branch or tag` on PR creation | Stacked-PR base branch was deleted | Retarget the child PR to `main` or the new common ancestor, rebase the head branch onto it, then retry creation. |
 | Empty or truncated lists | Pagination limit | Query narrower, pass pagination parameters when the tool exposes them, or inspect the Forgejo OpenAPI document. |
-| `curl: (22) ... error: 4xx` followed by a JSON `{"message": ...}` | HTTP error from Forgejo API fallback | Read the message to decide whether the payload, path, or token scope is wrong. |
