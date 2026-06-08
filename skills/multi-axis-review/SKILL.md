@@ -26,7 +26,7 @@ Don't rubber-stamp either. "LGTM" without evidence helps no one. Push back on re
 
 ## Inputs
 
-- **Diff** — the changed lines plus enough surrounding context to assess data flow. Sources include `git diff`, `git diff --cached`, `gh pr diff <N>`, or a Forgejo `pulls/{n}.diff` endpoint.
+- **Diff** — the changed lines plus enough surrounding context to assess data flow. Sources include `git diff`, `git diff --cached`, `gh pr diff <N>`, or Forgejo MCP diff tooling supplied by the caller.
 - **PR metadata** (when applicable) — title, description, author, base branch.
 - **Repo guidance** — any `CLAUDE.md`, `AGENTS.md`, `README`, style guide, or `CONTRIBUTING.md` the change must conform to. Conventions in those files override generic best practices.
 - **Optional axis filter** — restrict the review to specific axes (e.g. `security` only, `tests + errors`). Default is all applicable axes.

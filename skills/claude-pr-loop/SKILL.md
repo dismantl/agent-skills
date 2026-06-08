@@ -115,7 +115,7 @@ Use the `Agent` tool with:
 > Auth pattern: `<auth pattern>`. After producing the review, post it as a PR comment:
 >
 > - GitHub: `gh pr comment <N> --body-file -` (read body from stdin)
-> - Forgejo/Gitea: use `mcp_forgejo_create_issue_comment(owner="<owner>", repo="<name>", index=<N>, body="<review>")`. If the tool is not callable, return `Verdict: blocked` and report that Forgejo MCP is unavailable. PRs and issues share the comments namespace on Forgejo.
+> - Forgejo/Gitea: use the client-exposed Forgejo MCP comment tool, for example `mcp__forgejo.create_issue_comment(owner="<owner>", repo="<name>", index=<N>, body="<review>")` in Codex. If the tool is not callable, return `Verdict: blocked` and report that Forgejo MCP is unavailable. PRs and issues share the comments namespace on Forgejo.
 >
 > After the comment is posted, return as your final message the **`multi-axis-review` skill's Output Contract** verbatim — `Verdict:` line, `Severity:` line, severity-grouped findings sections (omit empty sections), and a 1–3 sentence `Summary:`. No extra prose, no preamble.
 
@@ -184,9 +184,9 @@ If CI fails, read the failure, reproduce locally when useful, fix it, recommit, 
 Fetch the head SHA from Forgejo MCP **fresh, immediately before polling**. Do not paste a SHA from `git push` output, do not copy one from a previous round, and never autoregressively complete a short prefix into a full 40-char SHA — the LLM does not have the missing 33 chars in context, and any "completion" is a hallucination.
 
 ```text
-pr_response = mcp_forgejo_get_pull_request_by_index(owner="<owner>", repo="<name>", index=<N>)
+pr_response = mcp__forgejo.get_pull_request_by_index(owner="<owner>", repo="<name>", index=<N>)
 head_sha = pr_response.Result.head.sha
-runs_response = mcp_forgejo_list_workflow_runs(owner="<owner>", repo="<name>", head_sha=head_sha)
+runs_response = mcp__forgejo.list_workflow_runs(owner="<owner>", repo="<name>", head_sha=head_sha)
 ```
 
 Why this matters: a hallucinated SHA can point checks at the wrong revision or an unavailable status shape. Always source the SHA from Forgejo MCP, never from the agent's own text.

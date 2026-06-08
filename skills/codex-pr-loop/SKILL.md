@@ -67,7 +67,7 @@ Before starting the first review round:
    - anything else -> treat as Forgejo/Gitea and require Forgejo MCP tools.
 4. Determine the PR branch:
    - GitHub: `gh pr view <pr> --json headRefName,baseRefName,url,title`.
-   - Forgejo/Gitea: use `mcp_forgejo_get_pull_request_by_index`.
+   - Forgejo/Gitea: use the client-exposed Forgejo MCP PR metadata tool, such as `mcp__forgejo.get_pull_request_by_index` in Codex.
 5. Check out the PR branch in a safe workspace. If already in the target repo, use a manual git worktree when isolation matters:
    - `git fetch origin`
    - `git worktree add ../<repo-slug>-pr-<N>-loop <head-ref>`
@@ -80,18 +80,20 @@ If the user asks for the loop to be fully backgrounded, explain that the parent 
 Do not use `tea`, API helper scripts, direct REST calls, or raw `curl` for this
 skill. Use Forgejo MCP tools only.
 
-If `mcp_forgejo_*` tools are not exposed in the active session, stop and report
-that Forgejo MCP is unavailable. Do not continue the PR loop in a Forgejo/Gitea
+If Forgejo MCP tools are not exposed in the active session, stop and report
+that Forgejo MCP is unavailable. In Codex they are exposed as
+`mcp__forgejo.<tool>` calls; use the exact names surfaced by the client instead
+of inventing names from prose. Do not continue the PR loop in a Forgejo/Gitea
 repo without MCP access.
 
 Useful tools:
 
-- PR metadata: `mcp_forgejo_get_pull_request_by_index`
-- PR diff: `mcp_forgejo_get_pull_request_diff`
-- PR files: `mcp_forgejo_list_pull_request_files`
-- PR issue comments: `mcp_forgejo_list_issue_comments`
-- Post a PR comment: `mcp_forgejo_create_issue_comment`
-- Workflow runs: `mcp_forgejo_list_workflow_runs`
+- PR metadata: `mcp__forgejo.get_pull_request_by_index`
+- PR diff: `mcp__forgejo.get_pull_request_diff`
+- PR files: `mcp__forgejo.list_pull_request_files`
+- PR issue comments: `mcp__forgejo.list_issue_comments`
+- Post a PR comment: `mcp__forgejo.create_issue_comment`
+- Workflow runs: `mcp__forgejo.list_workflow_runs`
 
 ## Review Round
 
@@ -139,7 +141,7 @@ Give the reviewer the repo path, PR number, branch, base/head refs, forge/MCP hi
 > Auth pattern: `<auth pattern>`. After producing the review, post it as a PR comment when the required forge tool is available:
 >
 > - GitHub: `gh pr comment <N> --body-file -` (read body from stdin)
-> - Forgejo/Gitea: use `mcp_forgejo_create_issue_comment(owner="<owner>", repo="<name>", index=<N>, body="<review>")`. If the tool is not callable, return `Verdict: blocked` and report that Forgejo MCP is unavailable. PRs and issues share the comments namespace on Forgejo/Gitea.
+> - Forgejo/Gitea: use the client-exposed Forgejo MCP comment tool, for example `mcp__forgejo.create_issue_comment(owner="<owner>", repo="<name>", index=<N>, body="<review>")` in Codex. If the tool is not callable, return `Verdict: blocked` and report that Forgejo MCP is unavailable. PRs and issues share the comments namespace on Forgejo/Gitea.
 >
 > After the comment is posted, return as your final message the **`multi-axis-review` skill's Output Contract** verbatim: `Verdict:` line, `Severity:` line, severity-grouped findings sections (omit empty sections), and a 1-3 sentence `Summary:`. No extra prose, no preamble.
 
@@ -244,9 +246,9 @@ If CI fails, read enough logs or status details to identify the root cause, repr
 Fetch the head SHA from Forgejo MCP fresh, immediately before polling. Do not paste a SHA from `git push` output, do not copy one from a previous round, and never complete a short prefix into a full 40-character SHA.
 
 ```text
-pr_response = mcp_forgejo_get_pull_request_by_index(owner="<owner>", repo="<name>", index=<N>)
+pr_response = mcp__forgejo.get_pull_request_by_index(owner="<owner>", repo="<name>", index=<N>)
 head_sha = pr_response.Result.head.sha
-runs_response = mcp_forgejo_list_workflow_runs(owner="<owner>", repo="<name>", head_sha=head_sha)
+runs_response = mcp__forgejo.list_workflow_runs(owner="<owner>", repo="<name>", head_sha=head_sha)
 ```
 
 Why this matters: a hallucinated SHA can point checks at the wrong revision or an unavailable status shape. Always source the SHA from Forgejo MCP, never from the agent's own text.

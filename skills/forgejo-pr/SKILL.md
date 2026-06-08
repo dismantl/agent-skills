@@ -5,10 +5,12 @@ description: "Use when working with pull requests on a Forgejo or Gitea reposito
 
 # Forgejo / Gitea PRs
 
-Use the Forgejo MCP tools. Tool names are usually surfaced as
-`mcp_forgejo_*`, backed by the local `forgejo-mcp` stdio server. The MCP
-launcher resolves the agent's token, so do not paste, print, or manually expand
-Forgejo tokens.
+Use the Forgejo MCP tools. Tool names are client-specific: Codex exposes them
+as namespaced calls like `mcp__forgejo.get_pull_request_by_index`, while other
+clients may render equivalent names differently. Use the callable name your
+client exposes; do not invent a name from these examples. The MCP launcher
+resolves the agent's token, so do not paste, print, or manually expand Forgejo
+tokens.
 
 If Forgejo MCP tools are not callable in the active session, stop and tell the
 user that Forgejo MCP is unavailable. Do not use API helper scripts, direct
@@ -33,7 +35,8 @@ Examples:
 | `https://git.example.com/alice/widgets.git` | `alice/widgets` |
 
 3. Confirm Forgejo MCP is available. A successful
-   `mcp_forgejo_get_my_user_info` call is a good auth sentinel.
+   `mcp__forgejo.get_my_user_info` call, or the equivalent client-exposed tool
+   name, is a good auth sentinel.
 
 4. If MCP tools are not exposed or auth fails, stop and report the missing
    Forgejo MCP capability. Do not continue with API helpers or direct HTTP.
@@ -55,29 +58,29 @@ Parse the tool response first, then read `.Result`. In examples below, `pr`,
 List open PRs:
 
 ```text
-pulls_response = mcp_forgejo_list_repo_pull_requests(owner="<owner>", repo="<repo>", state="open")
+pulls_response = mcp__forgejo.list_repo_pull_requests(owner="<owner>", repo="<repo>", state="open")
 pulls = pulls_response.Result
 ```
 
 View PR metadata:
 
 ```text
-pr_response = mcp_forgejo_get_pull_request_by_index(owner="<owner>", repo="<repo>", index=N)
+pr_response = mcp__forgejo.get_pull_request_by_index(owner="<owner>", repo="<repo>", index=N)
 pr = pr_response.Result
 ```
 
 Read PR diff or changed files:
 
 ```text
-diff_response = mcp_forgejo_get_pull_request_diff(owner="<owner>", repo="<repo>", index=N)
-files_response = mcp_forgejo_list_pull_request_files(owner="<owner>", repo="<repo>", index=N)
+diff_response = mcp__forgejo.get_pull_request_diff(owner="<owner>", repo="<repo>", index=N)
+files_response = mcp__forgejo.list_pull_request_files(owner="<owner>", repo="<repo>", index=N)
 ```
 
 Read or post thread comments:
 
 ```text
-comments_response = mcp_forgejo_list_issue_comments(owner="<owner>", repo="<repo>", index=N)
-mcp_forgejo_create_issue_comment(owner="<owner>", repo="<repo>", index=N, body="review summary")
+comments_response = mcp__forgejo.list_issue_comments(owner="<owner>", repo="<repo>", index=N)
+mcp__forgejo.create_issue_comment(owner="<owner>", repo="<repo>", index=N, body="review summary")
 ```
 
 Forgejo PR thread comments are issue comments; PR and issue numbers share the
@@ -86,14 +89,14 @@ same index namespace.
 Read reviews:
 
 ```text
-reviews_response = mcp_forgejo_list_pull_reviews(owner="<owner>", repo="<repo>", index=N)
+reviews_response = mcp__forgejo.list_pull_reviews(owner="<owner>", repo="<repo>", index=N)
 reviews = reviews_response.Result
 ```
 
 Check workflow runs for a head SHA:
 
 ```text
-runs_response = mcp_forgejo_list_workflow_runs(owner="<owner>", repo="<repo>", head_sha="<head_sha>")
+runs_response = mcp__forgejo.list_workflow_runs(owner="<owner>", repo="<repo>", head_sha="<head_sha>")
 runs = runs_response.Result
 ```
 
@@ -104,7 +107,7 @@ signal is unavailable through MCP.
 Create a PR after pushing the branch:
 
 ```text
-mcp_forgejo_create_pull_request(
+mcp__forgejo.create_pull_request(
   owner="<owner>",
   repo="<repo>",
   head="feature-branch",
@@ -117,7 +120,7 @@ mcp_forgejo_create_pull_request(
 Update title/body/base branch:
 
 ```text
-mcp_forgejo_update_pull_request(owner="<owner>", repo="<repo>", index=N, title="new title")
+mcp__forgejo.update_pull_request(owner="<owner>", repo="<repo>", index=N, title="new title")
 ```
 
 Only pass fields you intend to change.
@@ -125,7 +128,7 @@ Only pass fields you intend to change.
 Merge a PR only after explicit user confirmation:
 
 ```text
-mcp_forgejo_merge_pull_request(owner="<owner>", repo="<repo>", index=N, style="merge")
+mcp__forgejo.merge_pull_request(owner="<owner>", repo="<repo>", index=N, style="merge")
 ```
 
 Use a non-default merge mode only when the user or repo guidance specifies it.
@@ -133,7 +136,7 @@ Use a non-default merge mode only when the user or repo guidance specifies it.
 Close a PR without merging only after explicit user confirmation:
 
 ```text
-mcp_forgejo_update_pull_request(owner="<owner>", repo="<repo>", index=N, state="closed")
+mcp__forgejo.issue_state_change(owner="<owner>", repo="<repo>", index=N, state="closed")
 ```
 
 ## Checkout
@@ -165,7 +168,7 @@ guessing.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| No `mcp_forgejo_*` tools are exposed | Client session was started before Forgejo MCP was configured, or the MCP server failed to launch | Restart the client and check its MCP server list. Do not use API helpers as a fallback. |
+| No Forgejo MCP tools such as `mcp__forgejo.get_my_user_info` are exposed | Client session was started before Forgejo MCP was configured, or the MCP server failed to launch | Restart the client and check its MCP server list. Do not use API helpers as a fallback. |
 | `gopass is required` | `gopass` is not installed | Install gopass, initialize it with age, then add the agent token. |
 | `could not read Forgejo MCP token` | Missing token entry | Add the Forgejo MCP token secret expected by the MCP launcher. |
 | 401/403 | Token lacks access | Check token scopes and repo permissions. |
