@@ -5,15 +5,16 @@ description: "Use when working with pull requests on a Forgejo or Gitea reposito
 
 # Forgejo / Gitea PRs
 
-Use the local `forgejo-api` helper for API calls. It handles token lookup through `gopass` and keeps tokens out of command arguments.
+Use the Forgejo MCP tools. Tool names are client-specific: Codex exposes them
+as namespaced calls like `mcp__forgejo.get_pull_request_by_index`, while other
+clients may render equivalent names differently. Use the callable name your
+client exposes; do not invent a name from these examples. The MCP launcher
+resolves the agent's token, so do not paste, print, or manually expand Forgejo
+tokens.
 
-Prefer identity-specific wrappers when available:
-
-- Codex: `codex-forgejo-api`
-- Claude Code: `claude-forgejo-api`
-- Generic fallback: `forgejo-api`
-
-Do not use `tea` for agent workflows unless the user explicitly asks for it.
+If Forgejo MCP tools are not callable in the active session, stop and tell the
+user that Forgejo MCP is unavailable. Do not use API helper scripts, direct
+REST calls, raw `curl`, or `tea` as a fallback.
 
 ## Pre-Flight
 
@@ -33,115 +34,115 @@ Examples:
 | `ssh://git@git.example.com:2222/alice/widgets.git` | `alice/widgets` |
 | `https://git.example.com/alice/widgets.git` | `alice/widgets` |
 
-3. If the repo is not on the helper's default instance, set:
+3. Confirm Forgejo MCP is available. A successful
+   `mcp__forgejo.get_my_user_info` call, or the equivalent client-exposed tool
+   name, is a good auth sentinel.
 
-```sh
-export FORGEJO_BASE_URL="https://git.example.com"
+4. If MCP tools are not exposed or auth fails, stop and report the missing
+   Forgejo MCP capability. Do not continue with API helpers or direct HTTP.
+
+## MCP Response Shape
+
+The pinned `forgejo-mcp` binary returns structured payloads as JSON text with a
+top-level `Result` field:
+
+```json
+{"Result": <forgejo payload>}
 ```
 
-4. Choose the helper explicitly:
+Parse the tool response first, then read `.Result`. In examples below, `pr`,
+`comments`, `files`, and similar names refer to the unwrapped payload.
 
-```sh
-# Codex
-api=codex-forgejo-api
-
-# Claude Code
-api=claude-forgejo-api
-
-# Unknown or wrapper unavailable
-api=forgejo-api
-```
-
-Use exactly one of those assignments. Do not infer identity from which wrappers exist, because both may be installed.
-
-## Bodies are JSON, never multipart
-
-Forgejo's API expects JSON request bodies. The wrapper rejects `-F` / `--form` / `--form-string` up front (HTTP 422 across the board); pass the body via `--data '<json>'` or `--data @-` with a heredoc (see "Common Operations" below). The wrapper sets `Content-Type: application/json` for you, so you don't need `-H 'Content-Type: ...'` either. Reach for curl's multipart form-data flags on instinct and you'll round-trip through the wrapper's error message before getting back here.
-
-## Common Operations
+## MCP Operations
 
 List open PRs:
 
-```sh
-$api GET /repos/<owner>/<repo>/pulls
+```text
+pulls_response = mcp__forgejo.list_repo_pull_requests(owner="<owner>", repo="<repo>", state="open")
+pulls = pulls_response.Result
 ```
 
 View PR metadata:
 
-```sh
-$api GET /repos/<owner>/<repo>/pulls/<index>
+```text
+pr_response = mcp__forgejo.get_pull_request_by_index(owner="<owner>", repo="<repo>", index=N)
+pr = pr_response.Result
 ```
 
-Read thread comments:
+Read PR diff or changed files:
 
-```sh
-$api GET /repos/<owner>/<repo>/issues/<index>/comments
+```text
+diff_response = mcp__forgejo.get_pull_request_diff(owner="<owner>", repo="<repo>", index=N)
+files_response = mcp__forgejo.list_pull_request_files(owner="<owner>", repo="<repo>", index=N)
 ```
 
-Post a thread comment:
+Read or post thread comments:
 
-```sh
-$api POST /repos/<owner>/<repo>/issues/<index>/comments \
-  --data '{"body":"review summary"}'
+```text
+comments_response = mcp__forgejo.list_issue_comments(owner="<owner>", repo="<repo>", index=N)
+mcp__forgejo.create_issue_comment(owner="<owner>", repo="<repo>", index=N, body="review summary")
 ```
 
-Check combined commit status:
+Forgejo PR thread comments are issue comments; PR and issue numbers share the
+same index namespace.
 
-```sh
-$api GET /repos/<owner>/<repo>/commits/<sha>/status
+Read reviews:
+
+```text
+reviews_response = mcp__forgejo.list_pull_reviews(owner="<owner>", repo="<repo>", index=N)
+reviews = reviews_response.Result
 ```
+
+Check workflow runs for a head SHA:
+
+```text
+runs_response = mcp__forgejo.list_workflow_runs(owner="<owner>", repo="<repo>", head_sha="<head_sha>")
+runs = runs_response.Result
+```
+
+The pinned MCP server does not expose Forgejo's combined commit-status endpoint.
+Use workflow runs when they are enough; otherwise report that the needed status
+signal is unavailable through MCP.
 
 Create a PR after pushing the branch:
 
-```sh
-$api POST /repos/<owner>/<repo>/pulls \
-  --data '{"head":"feature-branch","base":"main","title":"feat: add thing","body":"## Summary\n- change\n\n## Test plan\n- [x] tests"}'
+```text
+mcp__forgejo.create_pull_request(
+  owner="<owner>",
+  repo="<repo>",
+  head="feature-branch",
+  base="main",
+  title="feat: add thing",
+  body="## Summary\n- change\n\n## Test plan\n- [x] tests"
+)
 ```
 
-For multi-line bodies, pipe a heredoc through `--data @-`:
+Update title/body/base branch:
 
-```sh
-$api POST /repos/<owner>/<repo>/pulls --data @- <<'JSON'
-{
-  "head": "feature-branch",
-  "base": "main",
-  "title": "feat: add thing",
-  "body": "## Summary\n- change one\n- change two\n\n## Test plan\n- [x] tests"
-}
-JSON
+```text
+mcp__forgejo.update_pull_request(owner="<owner>", repo="<repo>", index=N, title="new title")
 ```
 
-The helper reads its curl config from a temp file, so stdin is free for `--data @-`. Keep the heredoc delimiter quoted (`<<'JSON'`) so the shell doesn't expand `$` or backticks inside the JSON.
-
-Prefer `--data @-` even for single-line bodies when the JSON contains shell metacharacters — `(`, `)`, `$`, backticks, or unescaped single quotes inside a `--data '<json>'` invocation will be parsed by bash before the helper ever runs (e.g. a PR body referencing `(PR 1)` triggers `syntax error near unexpected token '('`). The heredoc form sidesteps the parser entirely.
-
-Do **not** wrap the heredoc in command substitution — `--data "$(cat <<'JSON' ... JSON)"` looks similar but is structurally different: the heredoc is captured into a string that bash then parses as a `--data` argument, so any `(`, `$`, or backtick in the body still hits the parser. With `--data @-`, the heredoc is piped to the helper's stdin and bash never sees the body as a shell argument.
-
-Check whether a PR is already merged:
-
-```sh
-$api GET /repos/<owner>/<repo>/pulls/<index>/merge
-```
+Only pass fields you intend to change.
 
 Merge a PR only after explicit user confirmation:
 
-```sh
-$api POST /repos/<owner>/<repo>/pulls/<index>/merge \
-  --data '{"Do":"merge"}'
+```text
+mcp__forgejo.merge_pull_request(owner="<owner>", repo="<repo>", index=N, style="merge")
 ```
 
-Use `"Do":"squash"` or another repo-supported merge mode only when the user or repo guidance specifies it.
+Use a non-default merge mode only when the user or repo guidance specifies it.
 
 Close a PR without merging only after explicit user confirmation:
 
-```sh
-$api PATCH /repos/<owner>/<repo>/issues/<index> \
-  --data '{"state":"closed"}'
+```text
+mcp__forgejo.issue_state_change(owner="<owner>", repo="<repo>", index=N, state="closed")
 ```
 
 ## Checkout
 
-To check out a PR locally, read the PR metadata first and use the returned head branch/repo details.
+To check out a PR locally, read the PR metadata first and use the returned head
+branch/repo details.
 
 For same-repo branches, this is usually enough:
 
@@ -150,34 +151,27 @@ git fetch origin
 git checkout <head-branch>
 ```
 
-For forked PRs, add/fetch the head repo remote from PR metadata instead of guessing.
-
-## Comments And Reviews
-
-Forgejo PR thread comments are issue comments, so general PR comments use:
-
-```text
-POST /repos/{owner}/{repo}/issues/{index}/comments
-```
-
-Inline review comments use the pull-review endpoints and need exact diff positions. Before posting inline comments non-interactively, inspect the instance OpenAPI document (`/swagger.v1.json`) or use thread comments instead.
+For forked PRs, add/fetch the head repo remote from PR metadata instead of
+guessing.
 
 ## Safety Rules
 
+- Use Forgejo MCP tools for Forgejo/Gitea PR operations.
+- Stop when Forgejo MCP tools are unavailable instead of switching transports.
 - Never print tokens or paste helper internals into PR comments.
 - Never merge, close, approve, reject, or delete branches without explicit user confirmation.
 - Prefer thread comments for synthesized agent reviews.
-- Keep API responses scoped; pipe through `jq` when large responses would be noisy.
-- If an endpoint fails with 404, verify both the repo slug and whether PR numbers share the issue index on that instance.
+- Keep responses scoped; unwrap `.Result` and summarize large payloads.
+- If a tool returns 404, verify both the repo slug and whether PR numbers share the issue index on that instance.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
+| No Forgejo MCP tools such as `mcp__forgejo.get_my_user_info` are exposed | Client session was started before Forgejo MCP was configured, or the MCP server failed to launch | Restart the client and check its MCP server list. Do not use API helpers as a fallback. |
 | `gopass is required` | `gopass` is not installed | Install gopass, initialize it with age, then add the agent token. |
-| `could not read Forgejo token` | Missing token entry | Add `agents/codex/forgejo-api-token` or `agents/claude/forgejo-api-token`. |
+| `could not read Forgejo MCP token` | Missing token entry | Add the Forgejo MCP token secret expected by the MCP launcher. |
 | 401/403 | Token lacks access | Check token scopes and repo permissions. |
 | 404 | Wrong instance, owner, repo, or PR index | Re-check remote URL and PR metadata. |
-| 404 with `could not find '<branch>' to be a commit, branch or tag` on PR creation | Stacked-PR base branch was deleted (typically because the parent PR merged and Forgejo auto-deleted its branch) | Retarget the child PR to `main` (or the new common ancestor) and rebase the head branch onto it. Then retry creation. |
-| Empty or truncated lists | Pagination limit | Query narrower, or inspect `/swagger.v1.json` for pagination parameters. |
-| `curl: (22) ... error: 4xx` followed by a JSON `{"message": ...}` | HTTP error from Forgejo | The helper exits non-zero on 4xx/5xx but prints the response body too. Read the message to decide: validation error (fix payload), 404 (wrong path), 401 (token scope). |
+| 404 with `could not find '<branch>' to be a commit, branch or tag` on PR creation | Stacked-PR base branch was deleted | Retarget the child PR to `main` or the new common ancestor, rebase the head branch onto it, then retry creation. |
+| Empty or truncated lists | Pagination limit | Query narrower, pass pagination parameters when the tool exposes them, or inspect the Forgejo OpenAPI document. |
