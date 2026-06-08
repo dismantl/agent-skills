@@ -48,7 +48,7 @@ Don't attempt the old "spawn a long-lived background driver subagent that runs u
 
 1. **Detect the forge** (see *Repo-shape detection* below) so the reviewer subagent's prompt names it explicitly. Don't make the reviewer re-derive what you already know.
 2. **Confirm the PR branch is checked out locally** (or check it out): `git fetch origin && git checkout <pr-branch>`. The parent applies fixes here, so the worktree must be on the PR branch.
-3. **Read the repo's `CLAUDE.md`** if present, especially any section on PR review tokens or auth — that's how the reviewer subagent knows how to post comments. For Forgejo/Gitea repos, prefer `claude-forgejo-api` when present on `PATH`; otherwise use `forgejo-api` with `FORGEJO_API_IDENTITY=claude` if available.
+3. **Read the repo's `CLAUDE.md`** if present, especially any section on PR review tools or auth — that's how the reviewer subagent knows how to post comments. For Forgejo/Gitea repos, use exposed Forgejo MCP tools first; fall back to `claude-forgejo-api` or `forgejo-api` only when MCP tools are not callable.
 
 ## The loop (runs in the parent)
 
@@ -100,22 +100,22 @@ return final_report(pr, findings_history, iteration)
 
 Use the `Agent` tool with:
 
-- `subagent_type: "general-purpose"` — the reviewer needs file reads, web/HTTP for the forge API, and the ability to invoke the `multi-axis-review` skill.
+- `subagent_type: "general-purpose"` — the reviewer needs file reads, forge MCP/API access, and the ability to invoke the `multi-axis-review` skill.
 - `run_in_background: true` — **default**. Reviews typically take minutes, so backgrounding them keeps the parent interactive during the slow part of the round. The parent gets a completion notification automatically when findings are ready. Drop to foreground only if the user has explicitly said they want the parent fully blocked during the loop, or if the runtime doesn't support background subagents.
-- No `isolation: "worktree"` — the reviewer is read-only and posts via the forge API; it doesn't need its own checkout.
+- No `isolation: "worktree"` — the reviewer is read-only and posts via forge tooling; it doesn't need its own checkout.
 
 ### Reviewer prompt template
 
 > Invoke the `multi-axis-review` skill against PR #`<N>` in `<owner/name>` on `<forge>` (`<forge-base-url>`).
 >
-> Pull the diff with `gh pr diff <N>` (GitHub) or the Forgejo `pulls/<N>.diff` endpoint, plus PR metadata (`gh pr view <N>` / `pulls/<N>`). Read the repo's `CLAUDE.md` / `AGENTS.md` / `CONTRIBUTING.md` if present so findings respect project conventions.
+> Pull the diff with `gh pr diff <N>` (GitHub) or Forgejo MCP/API diff tooling, plus PR metadata (`gh pr view <N>` / Forgejo PR metadata tooling). Read the repo's `CLAUDE.md` / `AGENTS.md` / `CONTRIBUTING.md` if present so findings respect project conventions.
 >
 > Run the review across all applicable axes (Correctness, Readability, Architecture, Security, Performance, Tests, Comments, Error handling, Type design where relevant, Change-level concerns).
 >
 > Auth pattern: `<auth pattern>`. After producing the review, post it as a PR comment:
 >
 > - GitHub: `gh pr comment <N> --body-file -` (read body from stdin)
-> - Forgejo/Gitea: `claude-forgejo-api POST /repos/<owner>/<name>/issues/<N>/comments` if available; otherwise `curl -H "Authorization: token <token>"` against the same endpoint. PRs and issues share the comments endpoint on Forgejo.
+> - Forgejo/Gitea: use `mcp_forgejo_create_issue_comment(owner="<owner>", repo="<name>", index=<N>, body="<review>")` when Forgejo MCP tools are exposed. If not, use `claude-forgejo-api POST /repos/<owner>/<name>/issues/<N>/comments --data @-` with JSON on stdin, or the repo-documented API helper. PRs and issues share the comments endpoint on Forgejo.
 >
 > After the comment is posted, return as your final message the **`multi-axis-review` skill's Output Contract** verbatim — `Verdict:` line, `Severity:` line, severity-grouped findings sections (omit empty sections), and a 1–3 sentence `Summary:`. No extra prose, no preamble.
 
@@ -175,7 +175,7 @@ Disagreed:
 Never start the next review round until the selected full verification gate has passed for the latest commit. For `ci` and `hybrid` modes, that means CI is green on the latest pushed commit.
 
 - GitHub: `gh pr checks <pr> --watch` (foreground) or `gh pr checks <pr>` polled via the `Monitor` tool with an `until` loop.
-- Forgejo: poll `claude-forgejo-api GET /repos/<owner>/<name>/commits/<sha>/status` until the combined `state` is `success`. The `Monitor` tool's `until <check>` loop is the right shape — you get a notification when the check passes. **The `<sha>` here is a footgun — read the next subsection before polling.**
+- Forgejo: use MCP workflow-run tooling for the head SHA when it is exposed and sufficient. Use the API fallback for the combined commit-status endpoint when workflow runs are unavailable or do not cover the required gate. The `Monitor` tool's `until <check>` loop is the right shape — you get a notification when the check passes. **The `<sha>` here is a footgun — read the next subsection before polling.**
 
 If CI fails, read the failure, reproduce locally when useful, fix it, recommit, wait for green, then proceed to the next review round. CI-fix commits don't count against `max_iterations`.
 
@@ -183,7 +183,15 @@ If CI fails, read the failure, reproduce locally when useful, fix it, recommit, 
 
 Fetch the head SHA from `pulls/<N>.head.sha` **fresh, immediately before polling**. Do not paste a SHA from `git push` output, do not copy one from a previous round, and never autoregressively complete a short prefix into a full 40-char SHA — the LLM does not have the missing 33 chars in context, and any "completion" is a hallucination.
 
+```text
+pr_response = mcp_forgejo_get_pull_request_by_index(owner="<owner>", repo="<name>", index=<N>)
+head_sha = pr_response.Result.head.sha
+runs_response = mcp_forgejo_list_workflow_runs(owner="<owner>", repo="<name>", head_sha=head_sha)
 ```
+
+API fallback for the combined status endpoint:
+
+```sh
 head_sha=$(claude-forgejo-api GET /repos/<owner>/<name>/pulls/<N> | jq -r .head.sha)
 claude-forgejo-api GET /repos/<owner>/<name>/commits/$head_sha/status
 ```
@@ -234,6 +242,6 @@ If the repo allows direct merge (auth permits it, branch protections satisfied) 
 The parent reads `.git/config` (or `git remote get-url origin`) to figure out which forge, then names it explicitly in the reviewer prompt:
 
 - Hostname matches `github.com` -> GitHub. Use `gh` for everything: `gh pr view`, `gh pr checks`, `gh pr merge`, `gh pr comment`.
-- Hostname is anything else (Forgejo / Gitea instance) -> use the Forgejo API directly. Prefer `claude-forgejo-api` when present; otherwise use `forgejo-api` with `FORGEJO_API_IDENTITY=claude` if available. Fall back to repo-documented auth (typically a vaulted token + `curl`) only when the helper is unavailable.
+- Hostname is anything else (Forgejo / Gitea instance) -> use exposed Forgejo MCP tools first. Prefer `claude-forgejo-api` or `forgejo-api` only when MCP tools are not callable; fall back to repo-documented auth only when no helper is available.
 
 The reviewer subagent inherits this detection via the prompt — tell it which forge and where to find the token, don't make it re-derive.
