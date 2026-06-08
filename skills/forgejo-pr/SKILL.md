@@ -221,6 +221,22 @@ $api POST /repos/<owner>/<repo>/pulls --data @- <<'JSON'
 JSON
 ```
 
+Merge a PR only after explicit user confirmation:
+
+```sh
+$api POST /repos/<owner>/<repo>/pulls/<index>/merge \
+  --data '{"Do":"merge"}'
+```
+
+Use a non-default merge mode only when the user or repo guidance specifies it.
+
+Close a PR without merging only after explicit user confirmation:
+
+```sh
+$api PATCH /repos/<owner>/<repo>/issues/<index> \
+  --data '{"state":"closed"}'
+```
+
 Forgejo expects JSON request bodies. The wrapper rejects `-F` / `--form` /
 `--form-string` because multipart form data returns HTTP 422 for these API
 calls. Prefer `--data @-` for multi-line or shell-metacharacter-heavy bodies;

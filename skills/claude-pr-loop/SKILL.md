@@ -108,7 +108,7 @@ Use the `Agent` tool with:
 
 > Invoke the `multi-axis-review` skill against PR #`<N>` in `<owner/name>` on `<forge>` (`<forge-base-url>`).
 >
-> Pull the diff with `gh pr diff <N>` (GitHub) or Forgejo MCP/API diff tooling, plus PR metadata (`gh pr view <N>` / Forgejo PR metadata tooling). Read the repo's `CLAUDE.md` / `AGENTS.md` / `CONTRIBUTING.md` if present so findings respect project conventions.
+> Pull the diff with `gh pr diff <N>` (GitHub) or Forgejo MCP/API diff tooling, plus PR metadata (`gh pr view <N>` / Forgejo PR metadata tooling). Read the repo's `CLAUDE.md` / `AGENTS.md` / `CONTRIBUTING.md` / `README.md` if present so findings respect project conventions.
 >
 > Run the review across all applicable axes (Correctness, Readability, Architecture, Security, Performance, Tests, Comments, Error handling, Type design where relevant, Change-level concerns).
 >
