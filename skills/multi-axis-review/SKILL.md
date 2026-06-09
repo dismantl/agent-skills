@@ -16,7 +16,7 @@ This skill is the *thinking framework and output contract*. It does not post com
 - After completing a feature, fixing a bug, or generating code with another agent.
 - When a single-axis review (just security, just tests) is wanted — invoke this skill and restrict the axes.
 
-For continuous "review then fix until merge-ready" loops, see `claude-pr-loop` or `codex-pr-loop`. Those skills *use* this one as the per-round reviewer.
+For continuous "review then fix until merge-ready" loops, see `pr-loop`. That skill uses this one as the per-round reviewer.
 
 ## Approval philosophy
 
@@ -213,7 +213,7 @@ Use these three at the verdict level — the output contract depends on them and
 
 Tags appear inline in the finding text, e.g. `foo.go:42 — nit: variable name 'data' is non-descriptive`.
 
-The **counts in the output contract still use only `critical / important / minor`** — downstream loops (`claude-pr-loop`, `codex-pr-loop`) parse those tokens. Dispositions are for human triage, not machine parsing.
+The **counts in the output contract still use only `critical / important / minor`** — downstream loops such as `pr-loop` parse those tokens. Dispositions are for human triage, not machine parsing.
 
 `critical` and `important` findings do not take dispositions — those are by definition "fix before merge" and the disposition would be redundant.
 
@@ -291,7 +291,7 @@ A clean report is a good report. If nothing is wrong, return `Verdict: merge-rea
 
 If the runtime exposes subagent tools to the reviewer, active policy permits using them, and the caller has not forbidden an extra context tier, the reviewer may dispatch per-axis specialists in parallel and aggregate, instead of reviewing single-mind. Examples include Claude Code's `Agent` tool and Codex's `spawn_agent` tool when available in the current context. **Use [Axis applicability](#axis-applicability) to decide which specialists to dispatch** — don't fan out to all of them on every PR. A docs-only PR doesn't need a security or types specialist; dispatching them anyway costs time and tokens for guaranteed-empty reports.
 
-If a caller requires a two-context review loop, such as `codex-pr-loop`, do not use this optional fan-out. Review single-mind inside the fresh reviewer so the caller's architecture remains intact.
+If a caller requires a two-context review loop, such as `pr-loop`, do not use this optional fan-out. Review single-mind inside the fresh reviewer so the caller's architecture remains intact.
 
 Specialists that map cleanly:
 
@@ -326,7 +326,7 @@ When the author pushes back on a finding:
 3. **Engineering principles** are the basis for design disagreements, not personal taste.
 4. **Codebase consistency** is acceptable if it doesn't degrade overall health.
 
-If a finding survives one fix attempt and is re-raised in a fresh-context review, the loop's deadlock detection will surface it — see `claude-pr-loop` and `codex-pr-loop`.
+If a finding survives one fix attempt and is re-raised in a fresh-context review, the loop's deadlock detection will surface it; see `pr-loop`.
 
 ## Common rationalizations
 
