@@ -133,16 +133,16 @@ Verdict: merge-ready | needs-work | blocked
 Severity: critical=<N> important=<N> minor=<N>
 
 Critical findings:
-- <file>:<line> - <one-line finding>
+- <file>:<line> — <one-line finding>
 
 Important findings:
-- <file>:<line> - <one-line finding>
+- <file>:<line> — <one-line finding>
 
 Minor findings:
-- <file>:<line> - <disposition>: <one-line finding>
+- <file>:<line> — <disposition>: <one-line finding>
 
 Summary:
-<1-3 sentences>
+<1–3 sentences>
 ```
 
 Omit empty severity sections. Do not emit "Critical findings: none"; let the
