@@ -20,10 +20,13 @@ smoke-pr-loop:
 	! grep -q 'codex-pr-loop' "$(CURDIR)/README.md"
 	! grep -q 'claude-pr-loop' "$(CURDIR)/README.md"
 	! grep -R -E -q 'codex-pr-loop|claude-pr-loop|gemini-pr-loop' "$(CURDIR)/skills" "$(CURDIR)/README.md"
+	grep -q 'rm -f "$$(HOME)/.agents/skills/codex-pr-loop"' "$(CURDIR)/Makefile"
+	grep -q 'rm -f "$$(HOME)/.claude/skills/claude-pr-loop"' "$(CURDIR)/Makefile"
 	@echo "pr-loop smoke test ok"
 
 install-codex-links:
 	mkdir -p "$(HOME)/.agents/skills"
+	rm -f "$(HOME)/.agents/skills/codex-pr-loop"
 	ln -sfn "$(CURDIR)/skills/pr-loop" "$(HOME)/.agents/skills/pr-loop"
 	ln -sfn "$(CURDIR)/skills/multi-axis-review" "$(HOME)/.agents/skills/multi-axis-review"
 	ln -sfn "$(CURDIR)/skills/forgejo-pr" "$(HOME)/.agents/skills/forgejo-pr"
@@ -32,6 +35,7 @@ install-codex-links:
 
 install-claude-links:
 	mkdir -p "$(HOME)/.claude/skills"
+	rm -f "$(HOME)/.claude/skills/claude-pr-loop"
 	ln -sfn "$(CURDIR)/skills/pr-loop" "$(HOME)/.claude/skills/pr-loop"
 	ln -sfn "$(CURDIR)/skills/multi-axis-review" "$(HOME)/.claude/skills/multi-axis-review"
 	ln -sfn "$(CURDIR)/skills/forgejo-pr" "$(HOME)/.claude/skills/forgejo-pr"
