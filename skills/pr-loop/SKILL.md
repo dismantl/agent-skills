@@ -159,6 +159,12 @@ Invoke the `multi-axis-review` skill against PR #<N> in <owner/name> on <forge>
 This is a `pr-loop` review round. Do not spawn nested agents or use
 `multi-axis-review` optional fan-out; this loop must stay at two contexts.
 
+Repository path for local inspection: <absolute-repo-path>
+Base ref: <base-ref> at <base-sha>
+Head ref: <head-ref> at <head-sha>
+Head branch: <head-branch>
+PR URL: <pr-url>
+
 Pull the diff with `gh pr diff <N>` for GitHub, or Forgejo/Gitea MCP diff
 tooling, plus PR metadata from `gh pr view <N>` or Forgejo/Gitea MCP metadata
 tooling. Read repo instructions such as AGENTS.md, CLAUDE.md, GEMINI.md,
