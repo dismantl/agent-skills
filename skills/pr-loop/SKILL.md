@@ -226,6 +226,15 @@ while iteration < max_iterations:
 Never start the next review round until the selected full verification gate has
 passed for the latest commit.
 
+### Target Branch Movement After a Clean Review
+
+If the latest review round found no issues and the target branch moves before
+the PR is merged, rebase or merge the PR branch as required, then compare the
+post-rebase PR diff to the diff that was already reviewed. Do not run another
+review round solely because the target branch moved. Start a fresh review only
+when the rebase meaningfully changes files modified by the PR, such as conflict
+resolution edits or semantic changes to the PR diff.
+
 ## Applying Fixes
 
 - Apply critical and important findings unless you can clearly explain why the
