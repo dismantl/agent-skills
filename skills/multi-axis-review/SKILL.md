@@ -41,11 +41,9 @@ Before reviewing a single line, make one judgment about the change *as a whole*:
 2. **A concrete, repo-compatible alternative** — a specific better path that uses this codebase's existing patterns and tools. "Configure retries once in the existing client factory" — *not* "do it more cleanly."
 3. **Why detailed review would be moot** — if (1) holds and (2) is taken, the changed code is replaced wholesale, so reviewing its lines is wasted effort. A change can carry a real line-level bug *and* still be blocked here, because the buggy code disappears under the rewrite.
 
-If you cannot fill all three, **proceed — do not block.** A change that merely isn't how you'd have written it, that has a fixable bug on a sound approach, or where you suspect-but-cannot-name a better way, goes through normal review. When in doubt, proceed.
+If you cannot fill all three, **proceed — do not block.** A change that merely isn't how you'd have written it, that has a fixable bug on a sound approach, where you suspect-but-cannot-name a better way, or whose problem is an accumulation of small issues rather than one fatal flaw — all go through normal review. Don't aggregate nits into a block. When in doubt, proceed.
 
 **This is the Approval philosophy at verdict altitude, not a contradiction of it.** The skill already refuses "I'd have written it differently" as a *finding* (see [What you do NOT flag](#what-you-do-not-flag)); the same rule governs the gate. Block only on a demonstrable approach flaw with a named alternative — never on preference, taste, or style. A false block is costlier than a false finding: it halts the pipeline, and a gate that cries wolf trains authors to override it on sight.
-
-**Scope (this version): the gate catches a single fatal flaw, not death-by-a-thousand-cuts.** A change where no one decision is fatal but the accumulation is questionable will pass the gate and get normal line-level review. That is intentional — reliably catching the accumulative case needs an end-of-review synthesis this version does not add. Missing a subtle accumulative problem is the accepted cost of not false-blocking sound PRs.
 
 ## Inputs
 
