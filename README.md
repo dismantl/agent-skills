@@ -79,6 +79,7 @@ Run against the repo copy directly:
 ```bash
 make smoke-session-historian ROOT="$PWD/skills/session-historian"
 make smoke-pr-loop
+make smoke-multi-axis-review
 ```
 
 Run against an installed Codex copy:
