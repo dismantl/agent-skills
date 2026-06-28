@@ -131,6 +131,7 @@ Each round produces the `multi-axis-review` Output Contract:
 ```text
 Verdict: merge-ready | needs-work | blocked
 Severity: critical=<N> important=<N> minor=<N>
+Blocked-reason: approach | incomplete   # present only when Verdict is blocked
 
 Critical findings:
 - <file>:<line> — <one-line finding>
@@ -170,9 +171,14 @@ tooling, plus PR metadata from `gh pr view <N>` or Forgejo/Gitea MCP metadata
 tooling. Read repo instructions such as AGENTS.md, CLAUDE.md, GEMINI.md,
 CONTRIBUTING.md, README.md, and workflow files if present.
 
-Review across all applicable axes: Correctness, Readability, Architecture,
-Security, Performance, Tests, Comments, Error handling, Type design where
-relevant, Maintainability, and Change-level concerns.
+First run the holistic gate (the skill's first pass): judge whether the change's
+overall approach is sound before reviewing any line. If it fails the skill's
+three-part bar, return `Verdict: blocked` / `Blocked-reason: approach` with the
+objection in the summary and stop — do not enumerate line-level findings.
+
+Otherwise, review across all applicable axes: Correctness, Readability,
+Architecture, Security, Performance, Tests, Comments, Error handling, Type design
+where relevant, Maintainability, and Change-level concerns.
 
 Auth pattern: <auth pattern>. After producing the review, post it as a PR
 comment when the required forge tool is available:
@@ -207,6 +213,8 @@ while iteration < max_iterations:
   start a fresh reviewer against the latest PR diff
   append findings to findings_history
 
+  if verdict is blocked:
+    stop  # surface Blocked-reason and the objection to the user; do not attempt fixes
   if verdict is merge-ready and critical == 0 and important == 0 and no actionable minor findings remain:
     stop
   if the same critical/important finding survived two consecutive rounds despite a fix attempt:
@@ -320,6 +328,10 @@ Stop when any of these happen:
 - `max_iterations` is reached.
 - The same critical or important finding survives two consecutive rounds after
   an attempted fix.
+- The reviewer returns `Verdict: blocked`. An `approach` block means the reviewer
+  judged the change's approach wrong and not worth line-level fixing; an
+  `incomplete` block means the review couldn't run. Either way, stop and surface
+  the `Blocked-reason` and objection to the user — do not attempt fixes.
 - CI fails twice for the same root cause.
 - The PR branch moves under you in a way that needs a user decision.
 - The user interrupts or changes direction.
@@ -331,7 +343,7 @@ Return a concise report:
 ```text
 PR <N>: <title>
 URL: <url>
-Status: merge-ready | stopped at iteration cap | stopped on deadlock | stopped on CI failures | branch moved | blocked | user-interrupted
+Status: merge-ready | stopped at iteration cap | stopped on deadlock | stopped on CI failures | branch moved | blocked (approach) | blocked (incomplete) | user-interrupted
 Rounds run: <N>
 Final severity: critical=<N> important=<N> actionable_minor=<N> deferred_minor=<N>
 Outstanding deferred minor findings:
@@ -347,6 +359,7 @@ satisfied, offer to merge. Otherwise tell the user what is blocking the merge.
 | Failure mode | Response |
 |---|---|
 | Same critical/important finding returns after a fix attempt | Stop and report both interpretations so the user can adjudicate. |
+| Reviewer returns `Verdict: blocked` (`approach` or `incomplete`) | Stop. Surface the `Blocked-reason` and objection to the user. An `approach` block is not mechanically fixable — do not attempt fixes or further rounds. |
 | About to start round `max_iterations + 1` | Stop and report progress; ask before continuing past the cap. |
 | CI fails twice for the same root cause | Stop and treat it as an environment problem. |
 | Reviewer returns unparseable output twice | Surface the raw output and stop. |

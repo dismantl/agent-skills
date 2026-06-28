@@ -1,6 +1,6 @@
 ROOT ?= $(CURDIR)/skills/session-historian
 
-.PHONY: smoke-session-historian smoke-pr-loop install-codex-links install-claude-links install-gemini-links
+.PHONY: smoke-session-historian smoke-pr-loop smoke-multi-axis-review install-codex-links install-claude-links install-gemini-links
 
 smoke-session-historian:
 	test -d "$(ROOT)/scripts"
@@ -23,6 +23,14 @@ smoke-pr-loop:
 	grep -q 'rm -f "$$(HOME)/.agents/skills/codex-pr-loop"' "$(CURDIR)/Makefile"
 	grep -q 'rm -f "$$(HOME)/.claude/skills/claude-pr-loop"' "$(CURDIR)/Makefile"
 	@echo "pr-loop smoke test ok"
+
+smoke-multi-axis-review:
+	test -f "$(CURDIR)/skills/multi-axis-review/SKILL.md"
+	grep -q '^name: multi-axis-review$$' "$(CURDIR)/skills/multi-axis-review/SKILL.md"
+	grep -qi 'holistic gate' "$(CURDIR)/skills/multi-axis-review/SKILL.md"
+	grep -q 'Blocked-reason: <approach | incomplete>' "$(CURDIR)/skills/multi-axis-review/SKILL.md"
+	grep -q 'multi-axis-review' "$(CURDIR)/README.md"
+	@echo "multi-axis-review smoke test ok"
 
 install-codex-links:
 	mkdir -p "$(HOME)/.agents/skills"

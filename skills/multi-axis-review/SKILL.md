@@ -24,6 +24,27 @@ Approve when the change definitely improves overall code health, even if it isn'
 
 Don't rubber-stamp either. "LGTM" without evidence helps no one. Push back on real issues directly, propose alternatives, and accept override gracefully when the author has full context.
 
+## The holistic gate (first pass)
+
+Before reviewing a single line, make one judgment about the change *as a whole*: is this the right solution to the problem it solves, or does the approach itself need to be reconsidered? A senior engineer asks "should this exist in this form at all?" *before* "is line 42 correct?" This gate is that question, run first.
+
+**Run it in the same pass — do not spin up a separate pre-reviewer.** You read the diff and stated intent once; make this judgment on that read, and only if it passes do you continue into the detailed axes over the same material. A separate gate agent would re-read everything and cost more on the common case (good PRs) than it ever saves on the rare block.
+
+**Two outcomes:**
+
+- **Block** — the approach is wrong in a way that makes line-level review moot. Return `Verdict: blocked` with `Blocked-reason: approach` (see [Output Contract](#output-contract)), state the objection in the summary, and **stop — do not enumerate line-level findings.** They would describe code that should not exist.
+- **Proceed** — the approach is sound, or merely imperfect. Continue to the detailed axes. **This is the default.**
+
+**The bar to block is high. Block only when you can name all three:**
+
+1. **A concrete fatal flaw in the *approach*** — not a line bug, the strategy: solving at the wrong layer, reinventing a well-tested stdlib / framework / library feature, depending on private or internal APIs that break on a routine upstream bump, fighting an existing repo convention without justification, or adding a new mechanic where the repo already has one that fits.
+2. **A concrete, repo-compatible alternative** — a specific better path that uses this codebase's existing patterns and tools. "Configure retries once in the existing client factory" — *not* "do it more cleanly."
+3. **Why detailed review would be moot** — if (1) holds and (2) is taken, the changed code is replaced wholesale, so reviewing its lines is wasted effort. A change can carry a real line-level bug *and* still be blocked here, because the buggy code disappears under the rewrite.
+
+If you cannot fill all three, **proceed — do not block.** A change that merely isn't how you'd have written it, that has a fixable bug on a sound approach, where you suspect-but-cannot-name a better way, or whose problem is an accumulation of small issues rather than one fatal flaw — all go through normal review. Don't aggregate nits into a block. When in doubt, proceed.
+
+**This is the Approval philosophy at verdict altitude, not a contradiction of it.** The skill already refuses "I'd have written it differently" as a *finding* (see [What you do NOT flag](#what-you-do-not-flag)); the same rule governs the gate. Block only on a demonstrable approach flaw with a named alternative — never on preference, taste, or style. A false block is costlier than a false finding: it halts the pipeline, and a gate that cries wolf trains authors to override it on sight.
+
 ## Inputs
 
 - **Diff** — the changed lines plus enough surrounding context to assess data flow. Sources include `git diff`, `git diff --cached`, `gh pr diff <N>`, or Forgejo MCP diff tooling supplied by the caller.
@@ -166,6 +187,8 @@ The question to ask on every flag: "Six months from now, when someone has to ext
 
 ## Axis applicability
 
+The [holistic gate](#the-holistic-gate-first-pass) runs *before* this table — it is not an axis. Only changes that clear the gate reach axis selection at all.
+
 Decide which axes apply *before* reviewing. Skipping inapplicable axes is the point — a single-mind reviewer that dutifully walks all ten on a docs-only PR will manufacture noise.
 
 | Axis | Always run | Skip when... |
@@ -233,13 +256,14 @@ To keep signal high:
 ## Process
 
 1. **Read the context.** PR title, description, linked issue, and any repo guidance (`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`). The change's *intent* shapes how you weight findings.
-2. **Read the tests first.** Tests reveal intent and coverage. A change with well-named, behavior-focused tests is easier to assess.
-3. **Walk the diff with all axes in mind**, file by file. Don't single-pass for one axis at a time unless the user asked for that — issues cluster, and missing context across axes is how false positives happen.
-4. **Follow data flows from changed code into existing code** when needed to assess risk (especially for security and correctness). Don't audit the whole codebase; do trace what the diff touches.
-5. **Categorize each finding** as `critical`, `important`, or `minor`. Group by severity in the output, critical first.
-6. **Quantify when possible.** "Adds ~50ms per item, list pages typically have 200 items" beats "could be slow."
-7. **Verify the verification.** Did tests run? Did the build pass? Was a UI change actually loaded in a browser? If the author claims "tested manually," is there a screenshot or a description?
-8. **Assemble the output** per [Output Contract](#output-contract).
+2. **Run the holistic gate.** On that first read, judge the approach as a whole (see [The holistic gate](#the-holistic-gate-first-pass)). If it fails the three-part bar, return `Verdict: blocked` / `Blocked-reason: approach` with the objection in the summary and **stop here** — skip the remaining steps; no line-level findings. Otherwise proceed.
+3. **Read the tests first.** Tests reveal intent and coverage. A change with well-named, behavior-focused tests is easier to assess.
+4. **Walk the diff with all axes in mind**, file by file. Don't single-pass for one axis at a time unless the user asked for that — issues cluster, and missing context across axes is how false positives happen.
+5. **Follow data flows from changed code into existing code** when needed to assess risk (especially for security and correctness). Don't audit the whole codebase; do trace what the diff touches.
+6. **Categorize each finding** as `critical`, `important`, or `minor`. Group by severity in the output, critical first.
+7. **Quantify when possible.** "Adds ~50ms per item, list pages typically have 200 items" beats "could be slow."
+8. **Verify the verification.** Did tests run? Did the build pass? Was a UI change actually loaded in a browser? If the author claims "tested manually," is there a screenshot or a description?
+9. **Assemble the output** per [Output Contract](#output-contract).
 
 ## Output Contract
 
@@ -248,6 +272,7 @@ The reviewer's final message must follow this exact structure. Loops parse it; d
 ```
 Verdict: <merge-ready | needs-work | blocked>
 Severity: critical=<N> important=<N> minor=<N>
+Blocked-reason: <approach | incomplete>   # present only when Verdict is blocked
 
 Critical findings:
 - <path/to/file>:<line> — <one-line description>
@@ -270,7 +295,9 @@ Rules:
 - Omit a findings section entirely if the count for that severity is zero. Do not write "Critical findings: none" — just leave the section out and let the count speak.
 - `Verdict: merge-ready` requires `critical=0` and `important=0`. Minor findings are allowed at merge-ready.
 - `Verdict: needs-work` is the default when at least one critical or important finding exists.
-- `Verdict: blocked` means the review couldn't be completed (diff unreadable, repo guidance missing, ambiguous intent that needs a human). Use sparingly.
+- `Verdict: blocked` halts review and escalates to a human. It always carries a `Blocked-reason`:
+  - `approach` — the holistic gate rejected the change's approach (see [The holistic gate](#the-holistic-gate-first-pass)). The detailed axes were intentionally skipped, so severity counts are normally `critical=0 important=0 minor=0`. List **no** line-level findings; the Summary carries the objection and names all three of: the fatal flaw, the repo-compatible alternative, and why line review is moot.
+  - `incomplete` — the review couldn't be performed (diff unreadable, repo guidance missing, ambiguous intent that needs a human). Use sparingly.
 - File:line references are required for every finding. If a finding spans a region, use the start line.
 - Every `minor` finding must carry exactly one disposition tag (`nit:`, `consider:`, `defer:`, `fyi:`) immediately after the em-dash. See [Disposition tags](#disposition-tags-required-on-minor-findings).
 - The summary is human-facing and short. Detail goes in the per-finding lines.
@@ -288,6 +315,8 @@ For each finding, when posting an inline review comment to the PR (this skill do
 A clean report is a good report. If nothing is wrong, return `Verdict: merge-ready`, zero counts, and a one-sentence summary noting what you checked.
 
 ## Optional fan-out (subagent-capable runtimes)
+
+Run the [holistic gate](#the-holistic-gate-first-pass) yourself, in the aggregating context, *before* dispatching any specialists. If the gate blocks on approach, return `blocked` / `approach` and dispatch nothing — every specialist finding would describe code slated for wholesale replacement.
 
 If the runtime exposes subagent tools to the reviewer, active policy permits using them, and the caller has not forbidden an extra context tier, the reviewer may dispatch per-axis specialists in parallel and aggregate, instead of reviewing single-mind. Examples include Claude Code's `Agent` tool and Codex's `spawn_agent` tool when available in the current context. **Use [Axis applicability](#axis-applicability) to decide which specialists to dispatch** — don't fan out to all of them on every PR. A docs-only PR doesn't need a security or types specialist; dispatching them anyway costs time and tokens for guaranteed-empty reports.
 
@@ -339,6 +368,7 @@ If a finding survives one fix attempt and is re-raised in a fresh-context review
 | "The tests pass, so it's good" | Tests are necessary but not sufficient. They don't catch architecture or security issues. |
 | "It's a small change, light review is fine" | Small changes can carry critical bugs. The axes still apply. |
 | "We're moving fast with AI, we'll pay down the debt later" | Throughput without a maintainability check is a loan against future capacity. The review *is* when you decide whether the loan is worth taking. |
+| "This isn't how I'd have built it, so I'll block the approach" | A [gate](#the-holistic-gate-first-pass) block needs a named fatal flaw *and* a concrete repo-compatible alternative *and* moot line review. Can't name all three? Proceed and review normally. |
 
 ## Red flags in your own review
 
@@ -348,11 +378,15 @@ If a finding survives one fix attempt and is re-raised in a fresh-context review
 - Large change ("too big to review properly") accepted as-is — split it instead.
 - A bug-fix PR with no regression test, accepted without flagging.
 - Missing severity labels — author can't tell what's required vs optional.
+- You returned `blocked` / `approach` without naming a concrete, repo-compatible alternative — that's preference dressed up as a gate.
+- You blocked on approach but the changed code would mostly survive your proposed alternative — line review wasn't actually moot, so it should have proceeded.
 
 ## Verification
 
 After producing the review:
 
+- If `Verdict: blocked`, a `Blocked-reason` (`approach` or `incomplete`) is present; it is absent otherwise.
+- If `Blocked-reason: approach`, the Summary names all three — fatal flaw, concrete repo-compatible alternative, why line review is moot — and **no** line-level findings are listed.
 - All findings have a `path:line` reference.
 - Every `minor` finding carries exactly one disposition tag (`nit:`, `consider:`, `defer:`, `fyi:`).
 - Verdict matches the severity counts (`merge-ready` only when `critical=0` and `important=0`).
