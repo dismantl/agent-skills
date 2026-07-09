@@ -16,6 +16,7 @@ and Gemini CLI.
 - `forgejo-pr`
 - `handoff`
 - `session-historian`
+- `codex-automation-recommender` (Codex-specific)
 - `pr-loop`
 
 ## Install
@@ -33,6 +34,7 @@ ln -s ~/.codex/agent-skills/skills/multi-axis-review ~/.agents/skills/multi-axis
 ln -s ~/.codex/agent-skills/skills/forgejo-pr ~/.agents/skills/forgejo-pr
 ln -s ~/.codex/agent-skills/skills/handoff ~/.agents/skills/handoff
 ln -s ~/.codex/agent-skills/skills/session-historian ~/.agents/skills/session-historian
+ln -s ~/.codex/agent-skills/skills/codex-automation-recommender ~/.agents/skills/codex-automation-recommender
 ln -s ~/.codex/agent-skills/skills/pr-loop ~/.agents/skills/pr-loop
 ```
 
@@ -78,6 +80,7 @@ Run against the repo copy directly:
 
 ```bash
 make smoke-session-historian ROOT="$PWD/skills/session-historian"
+make smoke-codex-automation-recommender
 make smoke-pr-loop
 make smoke-multi-axis-review
 ```
