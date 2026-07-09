@@ -1,6 +1,6 @@
 ---
 name: codex-automation-recommender
-description: Analyze a repository and recommend Codex-native automations, then ask which recommendations to implement. Use when the user asks for Codex automation recommendations, wants to optimize a Codex setup, asks how to set up Codex for a project, wants a Codex equivalent of Claude automation guidance, or wants Codex skills, plugins, MCP servers, hooks, rules, automations, subagents, prompts, or AGENTS.md improvements suggested for a codebase.
+description: Analyze a repository and recommend Codex-native automations, then ask which recommendations to implement. Use when the user asks for Codex automation recommendations, wants to optimize a Codex setup, asks how to set up Codex for a project, wants a Codex equivalent of Claude automation guidance, or wants Codex skills, plugins, hooks, rules, automations, subagents, CI/review automation, or AGENTS.md improvements suggested for a codebase.
 ---
 
 # Codex Automation Recommender
@@ -14,9 +14,9 @@ which ones they want, and implement only the selected items.
 - Phase 2 presents a numbered recommendation menu and stops for user selection.
 - Phase 3 implements only the selected recommendations.
 - A user selection authorizes normal repo-local edits for the selected items.
-- Ask again before account-wide installs, connector authorization, secrets,
-  live service changes, deploys, broad permission changes, or anything outside
-  the current repository.
+- Ask again before account-wide installs, secrets, live service changes,
+  deploys, broad permission changes, or anything outside the current
+  repository.
 - If the user asks for recommendations only, do not implement.
 
 ## Workflow
@@ -35,11 +35,9 @@ Look for:
 
 - language, framework, package manager, test runner, linting, formatting
 - repo guidance: `AGENTS.md`, nested overrides, README, CONTRIBUTING
-- Codex setup: `.codex/`, `.agents/skills/`, existing hooks, rules, prompts,
-  agents, MCP config, plugin notes
+- Codex setup: `.codex/`, `.agents/skills/`, existing hooks, rules, agents,
+  automations, GitHub Action or plugin notes
 - CI and forge: GitHub Actions, Forgejo/Gitea, GitHub PR workflow
-- external systems: databases, cloud providers, issue trackers, docs, browsers,
-  monitoring, design tools
 - repeated workflows: release, PR review, test generation, deploy prep,
   migrations, docs, security review
 
@@ -48,16 +46,20 @@ or `.env` files.
 
 ### 2. Load References As Needed
 
-- Read `references/codex-surfaces.md` when choosing the Codex surface for each
-  recommendation.
-- Read `references/recommendation-patterns.md` when matching repo signals to
-  concrete recommendations.
+- Read `references/skills-reference.md` for AGENTS.md, skill, and deprecated
+  custom-prompt guidance.
+- Read `references/plugins-reference.md` when a reusable workflow may be better
+  distributed as a plugin.
+- Read `references/hooks-and-rules.md` when recommending lifecycle hooks or
+  command/file safety rules.
+- Read `references/subagent-and-automation-patterns.md` when recommending
+  custom subagents, Codex automations, Codex code review, or GitHub Actions.
 - For current Codex syntax before writing config, hooks, rules, custom agents,
-  plugin manifests, MCP config, GitHub Actions, or automations, consult current
-  official Codex docs or the local Codex manual if available. Do not invent
-  syntax from memory.
-- For library or framework docs, prefer the current docs tools available in the
-  active Codex session, such as Context7 or official project docs.
+  plugin manifests, GitHub Actions, or automations, consult current official
+  Codex docs or the local Codex manual if available. Do not invent syntax from
+  memory.
+- For library or framework docs, prefer official project docs or current docs
+  tools available in the active Codex session.
 
 ### 3. Recommend
 
@@ -87,7 +89,7 @@ Why:
 Implementation:
 Risk:
 
-#### M1. MCP or Connector: [short title]
+#### P1. Plugin: [short title]
 Why:
 Implementation:
 Risk:
@@ -103,6 +105,11 @@ Implementation:
 Risk:
 
 #### T1. Automation: [short title]
+Why:
+Implementation:
+Risk:
+
+#### C1. CI or Code Review Automation: [short title]
 Why:
 Implementation:
 Risk:
@@ -131,7 +138,7 @@ When the user selects items:
 5. For each selected item, verify the relevant behavior:
    - skill: validate frontmatter and referenced files
    - `AGENTS.md`: inspect final instruction chain and path placement
-   - MCP/plugin/connector: verify install/config shape without printing secrets
+   - plugin: validate manifest or installation notes without printing secrets
    - hook/rule: run the official syntax checker or a dry-run command when
      available
    - subagent: validate TOML and required fields
@@ -147,7 +154,7 @@ Prefer the smallest durable surface:
 - Repo conventions -> `AGENTS.md` or nested `AGENTS.override.md`.
 - Repeatable workflow -> `.agents/skills/<name>/SKILL.md` for repo scope, or
   user skill only when the user wants it globally.
-- External tool access -> MCP server, app connector, or plugin.
+- Reusable distribution -> plugin.
 - Mechanical enforcement -> hook or rule.
 - Recurring follow-up -> Codex automation.
 - Specialized parallel work -> custom subagent.
@@ -160,8 +167,8 @@ environment variable names.
 
 ## Safety Defaults
 
-- Do not edit global `~/.codex/config.toml`, install plugins/connectors, or add
-  account-level MCP servers without explicit confirmation for that action.
+- Do not edit global `~/.codex/config.toml` or install plugins without explicit
+  confirmation for that action.
 - Do not write secrets, tokens, API keys, or `.env` content.
 - Do not broaden approval, sandbox, network, auth, deployment, or infrastructure
   behavior without explicit confirmation.
