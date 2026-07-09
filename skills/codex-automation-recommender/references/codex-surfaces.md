@@ -16,7 +16,7 @@ workflow. Check current Codex docs before writing exact config syntax.
 | Hook | Lifecycle action around tool calls or file edits | Codex hook config | Use for automatic formatting, validation, or guardrails. Verify syntax from docs. |
 | Rule | Command approval allow/prompt/deny policy | `.codex/rules/` or user rules | Use exact command prefixes and include inline examples when supported. |
 | Custom subagent | Specialized parallel review, exploration, or implementation role | `.codex/agents/<name>.toml` or user agents | Keep narrow; required fields are name, description, developer instructions. |
-| Custom prompt or slash prompt | Reusable prompt shortcut without a full workflow | Codex prompt location from current docs | Use for short reusable requests, not complex procedures. |
+| Deprecated custom prompt | Existing personal prompt maintenance only | `~/.codex/prompts` | Do not recommend new custom prompts; Codex docs direct reusable instructions to skills. |
 | Automation | Recurring or scheduled Codex work | Codex app automation | Use durable prompts; test manually before scheduling. |
 | GitHub Action | CI or noninteractive Codex execution | `.github/workflows/*.yml` | Fit for repository automation when GitHub is the forge. |
 | Codex code review | Automated PR review and fix follow-up on GitHub | Codex GitHub integration settings and PR comments | Recommend when the repo relies on GitHub PR review. |

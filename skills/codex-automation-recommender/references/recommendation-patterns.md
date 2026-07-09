@@ -19,7 +19,7 @@ the items that fit the current repository.
 | Repeated release, migration, PR, docs, or deploy-prep workflow | Create a repo skill in `.agents/skills/<workflow>/SKILL.md`. |
 | Workflow needs templates, scripts, or examples | Create a skill with `references/`, `scripts/`, or `assets/` as needed. |
 | Workflow is useful across many repos | Recommend a user skill or package it into a plugin. |
-| Existing long prompt copied between tasks | Convert it to a skill or custom prompt depending on complexity. |
+| Existing long prompt copied between tasks | Convert it to a skill; avoid new custom prompts because Codex docs deprecate them. |
 
 ## MCP Servers and Connectors
 
