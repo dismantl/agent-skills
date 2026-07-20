@@ -28,6 +28,7 @@ smoke-pr-loop:
 	grep -q 'Codex' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q 'Claude Code' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q 'Gemini CLI' "$(CURDIR)/skills/pr-loop/SKILL.md"
+	grep -q 'additional review round solely' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	! test -d "$(CURDIR)/skills/codex-pr-loop"
 	! test -d "$(CURDIR)/skills/claude-pr-loop"
 	grep -q 'skills/pr-loop' "$(CURDIR)/README.md"
