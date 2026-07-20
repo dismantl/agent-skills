@@ -212,6 +212,8 @@ while iteration < max_iterations:
 
   start a fresh reviewer against the latest PR diff
   append findings to findings_history
+  docs_comments_only = every actionable finding concerns only documentation or
+                       code comments, with no functional change required
 
   if verdict is blocked:
     stop  # surface Blocked-reason and the objection to the user; do not attempt fixes
@@ -229,10 +231,18 @@ while iteration < max_iterations:
   push
   if verification_mode is ci or hybrid:
     wait for CI on the latest head SHA
+  if docs_comments_only:
+    stop  # the verified fixes do not need another review round
 ```
 
 Never start the next review round until the selected full verification gate has
 passed for the latest commit.
+
+If a review round finds only documentation or code-comment issues and no
+functional issue, apply those fixes and complete the selected verification gate,
+then treat the PR as merge-ready without starting another review round. This
+exception applies only when none of the findings requires a behavior, test,
+contract, configuration, data, or runtime change.
 
 ### Target Branch Movement After a Clean Review
 
@@ -325,6 +335,9 @@ Stop when any of these happen:
 
 - Merge-ready verdict with zero critical, zero important, and zero actionable
   minor findings.
+- A round found only documentation or code-comment issues, those non-functional
+  fixes were applied, and the selected verification gate passed. Do not run an
+  additional review round solely to re-review those fixes.
 - `max_iterations` is reached.
 - The same critical or important finding survives two consecutive rounds after
   an attempted fix.
