@@ -165,6 +165,8 @@ Base ref: <base-ref> at <base-sha>
 Head ref: <head-ref> at <head-sha>
 Head branch: <head-branch>
 PR URL: <pr-url>
+Deployment and use context: <configured environments, trusted inputs, operator
+workflow, and explicit requirements known to the parent>
 
 Pull the diff with `gh pr diff <N>` for GitHub, or Forgejo/Gitea MCP diff
 tooling, plus PR metadata from `gh pr view <N>` or Forgejo/Gitea MCP metadata
@@ -179,6 +181,12 @@ objection in the summary and stop — do not enumerate line-level findings.
 Otherwise, review across all applicable axes: Correctness, Readability,
 Architecture, Security, Performance, Tests, Comments, Error handling, Type design
 where relevant, Maintainability, and Change-level concerns.
+
+For every candidate finding, require a current supported path to the problem and
+a material consequence. Do not invent users, inputs, deployment models, or
+requirements beyond the supplied context and repository evidence. Reject a
+suggested fix when its added modes, state, abstraction, or test burden costs
+more to maintain than the demonstrated risk warrants.
 
 Auth pattern: <auth pattern>. After producing the review, post it as a PR
 comment when the required forge tool is available:
@@ -195,9 +203,37 @@ If the reviewer returns unparseable output, retry once with an explicit reminder
 to follow the contract. If it fails again, surface the reviewer output verbatim
 and stop.
 
-Comment ownership must stay singular. In fresh-review mode, the reviewer posts
-the PR comment and the parent confirms it happened. In foreground fallback mode,
-the parent posts the PR comment.
+Review-comment ownership must stay singular. In fresh-review mode, the reviewer
+posts the review and the parent confirms it happened. In foreground fallback
+mode, the parent posts the review. The parent may add one clearly labeled
+adjudication follow-up when it rejects or defers only minor findings. It must add
+one when it rejects or defers any critical or important finding; that is a
+disposition record, not a duplicate review.
+
+## Finding Adjudication
+
+Reviewer severities are evidence to assess, not commands to implement. Before
+editing, the parent classifies every finding:
+
+- **Real defect** — repository evidence shows a supported or configured path
+  reaches a material failure, or the change violates an explicit requirement.
+- **Optional improvement** — the suggestion has a concrete benefit, but
+  addresses no current defect or requirement. This includes both hardening and
+  net-simplifying refactors.
+- **Review overreach** — the finding depends on hypothetical inputs, consumers,
+  deployment models, or standards that do not apply.
+
+Apply real defects. Apply optional improvements only when the user requested them or
+the change clearly reduces net maintenance cost without expanding the contract.
+Reject review overreach and record the evidence for the disagreement. When
+context is missing, inspect callers, configuration, and runbooks before deciding;
+do not let the reviewer fill the gap with assumptions.
+
+Starting in round 2, a newly raised finding needs stronger evidence than a
+first-round finding: identify either behavior introduced by the previous fix or
+current-system evidence the earlier review missed, including an existing helper
+that makes the fix materially simpler. A fresh reviewer is useful for catching
+regressions, not for expanding the imagined scope each round.
 
 ## Loop
 
@@ -212,18 +248,22 @@ while iteration < max_iterations:
 
   start a fresh reviewer against the latest PR diff
   append findings to findings_history
-  docs_comments_only = every actionable finding concerns only documentation or
+  adjudicate each finding as real defect, optional improvement, or review overreach
+  accepted_findings = real defects plus user-requested or net-simplifying optional improvements
+  followup_needed = any critical/important finding was rejected or deferred
+  docs_comments_only = every accepted finding concerns only documentation or
                        code comments, with no functional change required
 
   if verdict is blocked:
     stop  # surface Blocked-reason and the objection to the user; do not attempt fixes
-  if verdict is merge-ready and critical == 0 and important == 0 and no actionable minor findings remain:
+  if accepted_findings is empty:
+    post one adjudication follow-up if followup_needed
     stop
-  if the same critical/important finding survived two consecutive rounds despite a fix attempt:
+  if the same accepted critical/important finding survived two consecutive rounds despite a fix attempt:
     stop
 
-  apply accepted critical and important fixes
-  resolve actionable minor findings; defer only with a concrete reason
+  apply accepted findings
+  record evidence for rejected or deferred findings
   run cheap targeted local checks when useful
   if verification_mode is local or hybrid:
     run the full local test/lint gate before pushing
@@ -231,6 +271,8 @@ while iteration < max_iterations:
   push
   if verification_mode is ci or hybrid:
     wait for CI on the latest head SHA
+  if followup_needed:
+    post one adjudication follow-up with evidence for each disposition
   if docs_comments_only:
     stop  # the verified fixes do not need another review round
 ```
@@ -255,9 +297,10 @@ resolution edits or semantic changes to the PR diff.
 
 ## Applying Fixes
 
-- Apply critical and important findings unless you can clearly explain why the
-  review is wrong.
-- Resolve all in-scope minor findings before declaring merge-ready.
+- Apply critical and important findings only after confirming they are real
+  defects. A severity label does not replace reachability evidence.
+- Resolve minor findings when they correct current behavior or clearly simplify
+  future maintenance. Do not turn optional improvement into required scope.
 - Treat stale docs, misleading runbooks, future-agent guidance drift,
   test/contract drift, confusing comments near changed behavior, and small
   maintainability issues directly related to the PR as in-scope by default.
@@ -265,6 +308,10 @@ resolution edits or semantic changes to the PR diff.
   pre-existing, cosmetic-only, high-risk relative to the PR, requires a broader
   refactor, or needs a user decision. Document every deferral.
 - Keep fixes scoped to the PR.
+- Prefer removing unnecessary behavior over adding another mode, flag, branch,
+  fallback, fixture, or operator contract.
+- Reject a technically valid fix when its permanent maintenance cost is
+  disproportionate to the reachable failure it prevents.
 - Skip unrelated pre-existing issues and mention them in the final report.
 - Do not push, merge, or close a PR without user permission when the repo is not
   clearly owned or controlled by the user.
@@ -333,14 +380,14 @@ a short prefix into a full SHA.
 
 Stop when any of these happen:
 
-- Merge-ready verdict with zero critical, zero important, and zero actionable
-  minor findings.
+- Parent adjudication leaves no accepted findings. A raw `needs-work` verdict
+  does not keep the loop open when every finding was rejected with evidence.
 - A round found only documentation or code-comment issues, those non-functional
   fixes were applied, and the selected verification gate passed. Do not run an
   additional review round solely to re-review those fixes.
 - `max_iterations` is reached.
-- The same critical or important finding survives two consecutive rounds after
-  an attempted fix.
+- The same accepted critical or important finding survives two consecutive
+  rounds after an attempted fix.
 - The reviewer returns `Verdict: blocked`. An `approach` block means the reviewer
   judged the change's approach wrong and not worth line-level fixing; an
   `incomplete` block means the review couldn't run. Either way, stop and surface
@@ -361,8 +408,13 @@ Rounds run: <N>
 Final severity: critical=<N> important=<N> actionable_minor=<N> deferred_minor=<N>
 Outstanding deferred minor findings:
 - <finding> (<file>): <why not fixed>
+Rejected findings:
+- <finding>: <real-world evidence for disagreement>
 Next step: <merge offered | manual review needed | user decision required>
 ```
+
+Report final severity after parent adjudication, not the raw reviewer counts.
+Omit empty deferred and rejected sections.
 
 If the repo allows direct merge, auth permits it, and branch protections are
 satisfied, offer to merge. Otherwise tell the user what is blocking the merge.
@@ -371,7 +423,7 @@ satisfied, offer to merge. Otherwise tell the user what is blocking the merge.
 
 | Failure mode | Response |
 |---|---|
-| Same critical/important finding returns after a fix attempt | Stop and report both interpretations so the user can adjudicate. |
+| Same accepted critical/important finding returns after a fix attempt | Stop and report both interpretations so the user can adjudicate. |
 | Reviewer returns `Verdict: blocked` (`approach` or `incomplete`) | Stop. Surface the `Blocked-reason` and objection to the user. An `approach` block is not mechanically fixable — do not attempt fixes or further rounds. |
 | About to start round `max_iterations + 1` | Stop and report progress; ask before continuing past the cap. |
 | CI fails twice for the same root cause | Stop and treat it as an environment problem. |
