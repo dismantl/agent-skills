@@ -24,6 +24,10 @@ Approve when the change definitely improves overall code health, even if it isn'
 
 Don't rubber-stamp either. "LGTM" without evidence helps no one. Push back on real issues directly, propose alternatives, and accept override gracefully when the author has full context.
 
+An actionable finding needs a current, supported path to the problem and a
+material consequence. Review the system the repository actually operates, not a
+hypothetical future product with different users, inputs, or requirements.
+
 ## The holistic gate (first pass)
 
 Before reviewing a single line, make one judgment about the change *as a whole*: is this the right solution to the problem it solves, or does the approach itself need to be reconsidered? A senior engineer asks "should this exist in this form at all?" *before* "is line 42 correct?" This gate is that question, run first.
@@ -51,6 +55,29 @@ If you cannot fill all three, **proceed — do not block.** A change that merely
 - **PR metadata** (when applicable) — title, description, author, base branch.
 - **Repo guidance** — any `CLAUDE.md`, `AGENTS.md`, `README`, style guide, or `CONTRIBUTING.md` the change must conform to. Conventions in those files override generic best practices.
 - **Optional axis filter** — restrict the review to specific axes (e.g. `security` only, `tests + errors`). Default is all applicable axes.
+
+## Materiality and reachability
+
+Before reporting a finding, establish both:
+
+1. **Reachability** — identify the supported input, configured deployment path,
+   documented operator workflow, or caller that reaches the problem. An explicit
+   task requirement also counts. Do not assume unconfigured deployments,
+   adversarial control of operator-owned constants, or future consumers.
+2. **Material consequence** — explain the concrete failure, regression, security
+   impact, or maintenance burden on that path. "Could be more robust" is not a
+   consequence.
+
+If either is missing, do not report the issue as a defect. A genuinely useful
+but non-required improvement may be a `minor` `consider:` finding when it has a
+specific current maintenance benefit. Omit speculative hardening and invented
+requirements entirely.
+
+Judge the proposed remedy too. Prefer deleting unnecessary behavior and reusing
+an existing mechanism. Do not recommend new modes, state, abstractions, or test
+matrices whose ongoing cost exceeds the demonstrated risk. This
+net-maintainability check applies even when the proposed fix would technically
+handle more edge cases.
 
 ## The axes
 
@@ -126,10 +153,12 @@ Real bottlenecks only. Quantify when possible.
 
 - Tests exist for the change.
 - They test behavior, not implementation details.
-- Edge cases covered (the same ones flagged under Correctness).
+- Reachable boundary cases covered (the same ones flagged under Correctness).
 - Bug-fix PRs include a regression test.
 - Test names describe what they verify.
 - The tests would actually catch a regression if the code changed.
+- The test environment is proportional to the behavior under test; do not
+  require a production replica when a smaller test proves the contract.
 
 ### 7. Comments and documentation
 
@@ -178,6 +207,10 @@ Look for:
 
 The question to ask on every flag: "Six months from now, when someone has to extend or fix this, what will slow them down?" If the answer is "nothing specific" don't flag it. If the answer is concrete — a name they'll misread, a contract they'll miss, a duplicate they'll forget to update — flag it.
 
+Apply the same question to your suggested fix. A theoretical edge case does not
+justify permanent modes, branches, fixtures, or operator-facing surface area
+that future maintainers must understand.
+
 ### 11. Change-level concerns
 
 - **Size**: ~100 LOC is good, ~300 LOC acceptable for a single logical change, ~1000 LOC is too large — flag for splitting unless it's an automated refactor or wholesale deletion.
@@ -219,8 +252,8 @@ Use these three at the verdict level — the output contract depends on them and
 
 | Severity | Meaning |
 |---|---|
-| **critical** | Blocks merge. Security vulnerability, data loss, broken functionality, exploitable bug. |
-| **important** | Should fix before merge. Real defect, architectural problem, missing test for new logic, silent failure. |
+| **critical** | Blocks merge. Catastrophic or release-defeating issue such as an exploitable high-impact vulnerability, data loss, or core functionality being broadly unusable. |
+| **important** | Should fix before merge. A currently reachable defect, architectural problem, materially missing test for new logic, or silent failure that is not release-defeating. |
 | **minor** | Nice to fix; safe to defer. Style, clarity nit, optional refactor, low-impact perf, FYI. |
 
 ### Disposition tags (required on `minor` findings)
@@ -250,6 +283,9 @@ To keep signal high:
 - Dependencies with CVEs that don't affect the usage pattern in this code.
 - Generic "you should add rate limiting" without evidence of an actual abuse vector.
 - Missing security headers on non-web endpoints.
+- Behavior outside the repository's supported or configured use cases.
+- Edge-case hardening whose fix adds more maintenance surface than the
+  demonstrated risk warrants.
 - Code style preferences dressed up as substantive concerns.
 - Suggestions whose only justification is "I would have written it differently."
 
@@ -260,10 +296,12 @@ To keep signal high:
 3. **Read the tests first.** Tests reveal intent and coverage. A change with well-named, behavior-focused tests is easier to assess.
 4. **Walk the diff with all axes in mind**, file by file. Don't single-pass for one axis at a time unless the user asked for that — issues cluster, and missing context across axes is how false positives happen.
 5. **Follow data flows from changed code into existing code** when needed to assess risk (especially for security and correctness). Don't audit the whole codebase; do trace what the diff touches.
-6. **Categorize each finding** as `critical`, `important`, or `minor`. Group by severity in the output, critical first.
-7. **Quantify when possible.** "Adds ~50ms per item, list pages typically have 200 items" beats "could be slow."
-8. **Verify the verification.** Did tests run? Did the build pass? Was a UI change actually loaded in a browser? If the author claims "tested manually," is there a screenshot or a description?
-9. **Assemble the output** per [Output Contract](#output-contract).
+6. **Apply the materiality and reachability gate** to every candidate finding.
+   Discard findings based on hypothetical use cases or disproportionate fixes.
+7. **Categorize each remaining finding** as `critical`, `important`, or `minor`. Group by severity in the output, critical first.
+8. **Quantify when possible.** "Adds ~50ms per item, list pages typically have 200 items" beats "could be slow."
+9. **Verify the verification.** Did tests run? Did the build pass? Was a UI change actually loaded in a browser? If the author claims "tested manually," is there a screenshot or a description?
+10. **Assemble the output** per [Output Contract](#output-contract).
 
 ## Output Contract
 
@@ -380,6 +418,10 @@ If a finding survives one fix attempt and is re-raised in a fresh-context review
 - Missing severity labels — author can't tell what's required vs optional.
 - You returned `blocked` / `approach` without naming a concrete, repo-compatible alternative — that's preference dressed up as a gate.
 - You blocked on approach but the changed code would mostly survive your proposed alternative — line review wasn't actually moot, so it should have proceeded.
+- You reported an issue without identifying how the current supported system
+  reaches it.
+- Your suggested fix adds more modes, state, or tests than the demonstrated
+  risk justifies.
 
 ## Verification
 
