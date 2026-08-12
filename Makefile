@@ -32,6 +32,8 @@ smoke-pr-loop:
 	grep -q '^## Finding Adjudication$$' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q 'Review overreach' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q 'final severity after parent adjudication' "$(CURDIR)/skills/pr-loop/SKILL.md"
+	grep -q "Announce the mode in the parent" "$(CURDIR)/skills/pr-loop/SKILL.md"
+	grep -q 'this same command' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	! test -d "$(CURDIR)/skills/codex-pr-loop"
 	! test -d "$(CURDIR)/skills/claude-pr-loop"
 	grep -q 'skills/pr-loop' "$(CURDIR)/README.md"
