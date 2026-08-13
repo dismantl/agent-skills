@@ -336,6 +336,11 @@ Disagreed:
 Choose one authoritative full verification gate before the first fix round, then
 re-evaluate only if CI is unavailable or clearly untrustworthy.
 
+**Announce the mode in the parent's first message of the loop** (`Verification:
+CI`). An unmade choice defaults to running both, because each individual full
+run feels justified in the moment. Stating it makes the choice a visible
+commitment the user can correct early.
+
 - `ci` - Default when PR CI exists, covers the same tests/lint as the local
   suite, and can be polled. Run only cheap targeted checks before push, then
   wait for CI.
@@ -345,6 +350,23 @@ re-evaluate only if CI is unavailable or clearly untrustworthy.
   requires it, or local and CI gates cover materially different risks.
 
 Do not run a full local suite and an equivalent full CI suite by default.
+
+### Before any full-suite run
+
+> Does CI run *this same command* on *this same commit*?
+
+Read the workflow to answer it; it is a fact, not a judgement. A workflow step
+of `run: make ci` makes a local `make ci` byte-for-byte duplicated work, and a
+CI job set that is a superset of the local one makes local strictly worse. If
+the answer is yes, do not run it - push.
+
+The check exists because the general rule loses to specific-feeling exceptions:
+"this one's a merge", "this touched test infrastructure", "the reviewer found
+something alarming". None of those change the answer.
+
+Targeted runs are outside this rule. A single test file, a mutation test, or a
+probe answers a question and changes what you do next. The rule governs
+full-suite runs, which produce a verdict - and there is one verdict per commit.
 
 ## Local Checks
 
