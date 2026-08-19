@@ -31,6 +31,8 @@ smoke-pr-loop:
 	grep -q 'additional review round solely' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q '^## Finding Adjudication$$' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q 'Review overreach' "$(CURDIR)/skills/pr-loop/SKILL.md"
+	grep -q 'writes a short adjudication ledger for every finding' "$(CURDIR)/skills/pr-loop/SKILL.md"
+	grep -q 'Theoretical reachability alone is not enough' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q 'final severity after parent adjudication' "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q "Announce the mode in the parent" "$(CURDIR)/skills/pr-loop/SKILL.md"
 	grep -q 'this same command' "$(CURDIR)/skills/pr-loop/SKILL.md"
