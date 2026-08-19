@@ -182,8 +182,11 @@ Otherwise, review across all applicable axes: Correctness, Readability,
 Architecture, Security, Performance, Tests, Comments, Error handling, Type design
 where relevant, Maintainability, and Change-level concerns.
 
-For every candidate finding, require a current supported path to the problem and
-a material consequence. Do not invent users, inputs, deployment models, or
+For every candidate finding, require a current supported path, credible evidence
+that the path can occur under configured operation, and a material consequence.
+Theoretical reachability alone is not enough. Evidence can be an observed or
+reproduced failure, an explicit requirement, or a condition reasonably expected
+during normal supported use. Do not invent users, inputs, deployment models, or
 requirements beyond the supplied context and repository evidence. Reject a
 suggested fix when its added modes, state, abstraction, or test burden costs
 more to maintain than the demonstrated risk warrants.
@@ -213,21 +216,43 @@ disposition record, not a duplicate review.
 ## Finding Adjudication
 
 Reviewer severities are evidence to assess, not commands to implement. Before
-editing, the parent classifies every finding:
+editing, the parent writes a short adjudication ledger for every finding:
 
-- **Real defect** — repository evidence shows a supported or configured path
-  reaches a material failure, or the change violates an explicit requirement.
+- **Trigger and evidence** — what configured input, state, or operation reaches
+  the problem, and whether it is observed, reproduced, required by contract, or
+  merely conceivable.
+- **Likelihood** — whether that trigger is expected in normal supported use;
+  "possible" without operational evidence is not enough.
+- **Actual consequence** — the demonstrated user, data, security, performance,
+  or operational effect, not the worst imaginable result.
+- **Fix cost** — added code paths, state, tests, abstractions, and ongoing
+  maintenance.
+- **Disposition** — real defect, optional improvement, or review overreach.
+
+Then the parent classifies every finding:
+
+- **Real defect** — the change violates an explicit requirement, or repository
+  evidence shows a supported or configured path is realistically expected to
+  reach a material failure.
 - **Optional improvement** — the suggestion has a concrete benefit, but
   addresses no current defect or requirement. This includes both hardening and
   net-simplifying refactors.
 - **Review overreach** — the finding depends on hypothetical inputs, consumers,
-  deployment models, or standards that do not apply.
+  deployment models, standards, or compound/transient failures without evidence
+  that they matter in supported operation.
 
 Apply real defects. Apply optional improvements only when the user requested them or
 the change clearly reduces net maintenance cost without expanding the contract.
 Reject review overreach and record the evidence for the disagreement. When
 context is missing, inspect callers, configuration, and runbooks before deciding;
 do not let the reviewer fill the gap with assumptions.
+
+Default to review overreach when the trigger is merely conceivable and no
+requirement or realistic occurrence evidence exists. Ease of implementation is
+not evidence that hardening is worthwhile: do not add code or tests for an
+unrealistic edge case merely because the patch is small. A rare path may still
+qualify when its consequence is independently severe, such as data loss or a
+security boundary failure; record that reasoning explicitly.
 
 Starting in round 2, a newly raised finding needs stronger evidence than a
 first-round finding: identify either behavior introduced by the previous fix or
@@ -248,6 +273,7 @@ while iteration < max_iterations:
 
   start a fresh reviewer against the latest PR diff
   append findings to findings_history
+  write the trigger/evidence, likelihood, actual consequence, fix cost, and disposition ledger
   adjudicate each finding as real defect, optional improvement, or review overreach
   accepted_findings = real defects plus user-requested or net-simplifying optional improvements
   followup_needed = any critical/important finding was rejected or deferred
@@ -297,8 +323,9 @@ resolution edits or semantic changes to the PR diff.
 
 ## Applying Fixes
 
-- Apply critical and important findings only after confirming they are real
-  defects. A severity label does not replace reachability evidence.
+- Apply critical and important findings only after the adjudication ledger
+  confirms they are real defects. A severity label and a theoretically reachable
+  path do not replace realistic occurrence evidence.
 - Resolve minor findings when they correct current behavior or clearly simplify
   future maintenance. Do not turn optional improvement into required scope.
 - Treat stale docs, misleading runbooks, future-agent guidance drift,
